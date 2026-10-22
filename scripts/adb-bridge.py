@@ -4,6 +4,7 @@ import argparse
 import ipaddress
 import json
 import os
+import shlex
 import shutil
 import socket
 import subprocess
@@ -23,6 +24,10 @@ TARGET = "/data/local/tmp/lx04-status-proxy.target"
 LOG = "/data/local/tmp/lx04-status-proxy.log"
 TOYBOX = "/system/bin/toybox"
 ADB = next((p for p in ("/opt/homebrew/bin/adb", shutil.which("adb")) if p and Path(p).exists()), None)
+
+
+def log(message):
+    print(f"{time.strftime('%Y-%m-%d %H:%M:%S')} [adb-bridge] {message}", flush=True)
 
 
 def run(*args, timeout=8):
@@ -129,20 +134,34 @@ def save_endpoint(endpoint):
 
 def proxy_ready(serial, target):
     listening = run("-s", serial, "shell", "ss", "-ltn")
+    # ADB 超时只表示状态未知，不能据此结束正常代理。
+    if listening is None or listening.returncode != 0:
+        return None
+    if f"127.0.0.1:{STATUS_PORT} " not in listening.stdout:
+        return False
     configured = run("-s", serial, "shell", "cat", TARGET)
-    return bool(listening and configured and f"127.0.0.1:{STATUS_PORT}" in listening.stdout
-                and configured.stdout.strip() == target)
+    if configured is None:
+        return None
+    return configured.returncode == 0 and configured.stdout.strip() == target
 
 
 def install_proxy(serial, target):
+    target = str(ipaddress.IPv4Address(target))
+    prefix = f"{TOYBOX} nc -s 127.0.0.1 -p {STATUS_PORT} -L {TOYBOX} nc "
     command = (
-        f"if [ -f {PID} ]; then kill $(cat {PID}) 2>/dev/null; fi; "
+        f"old=$(cat {PID} 2>/dev/null); "
+        "case \"$old\" in ''|*[!0-9]*) ;; *) "
+        'actual=$(tr \'\\000\' \' \' <"/proc/$old/cmdline" 2>/dev/null); '
+        f'case "$actual" in {shlex.quote(prefix)}*) '
+        'kill "$old" 2>/dev/null; sleep 1 ;; esac ;; esac; '
+        # PID 文件跨重启保留，先核对进程身份；不接管未知来源的监听端口。
+        f"if ss -ltn | grep -q '127.0.0.1:{STATUS_PORT} '; then exit 1; fi; "
         f"nohup {TOYBOX} nc -s 127.0.0.1 -p {STATUS_PORT} -L "
         f"{TOYBOX} nc {target} {STATUS_PORT} >{LOG} 2>&1 & "
         f"echo $! >{PID}; echo {target} >{TARGET}"
     )
     result = run("-s", serial, "shell", command)
-    return bool(result and result.returncode == 0)
+    return bool(result and result.returncode == 0 and proxy_ready(serial, target) is True)
 
 
 def server_alive():
@@ -154,17 +173,43 @@ def server_alive():
 
 
 def open_status(serial):
-    result = run("-s", serial, "shell", "am", "start", "-a", "android.intent.action.VIEW",
-                 "-d", URL, "-p", "mark.via.gp")
-    return bool(result and result.returncode == 0)
+    # Via 把每次 ACTION_VIEW 都当成新页签，浏览器标准的复用 extra 在真机上无效。
+    # MAIN 先回到原页签；搜索键选中地址栏，在当前页里输入固定地址。
+    commands = [
+        ("am", "start", "-W", "-a", "android.intent.action.MAIN", "-c",
+         "android.intent.category.LAUNCHER", "-n", "mark.via.gp/mark.via.Shell"),
+        ("input", "keyevent", "84"),
+        ("input", "text", URL),
+        ("input", "keyevent", "66"),
+    ]
+    for command in commands:
+        result = run("-s", serial, "shell", *command)
+        if result is None or result.returncode != 0:
+            return False
+        if command == ("input", "keyevent", "84"):
+            time.sleep(0.3)
+    return True
 
 
-def reload_status(serial):
-    result = run("-s", serial, "shell", "input", "keyevent", "135")
-    return bool(result and result.returncode == 0)
+def observe_device(serial, previous):
+    result = run("-s", serial, "shell",
+                 "cat /proc/sys/kernel/random/boot_id; pidof mark.via.gp")
+    if result is None:
+        return previous
+    lines = result.stdout.strip().splitlines()
+    if not lines or len(lines[0]) != 36:
+        return previous
+    state = (lines[0], lines[1].strip() if len(lines) > 1 else "未运行")
+    if previous is None:
+        log(f"设备基线：boot={state[0]}，Via PID={state[1]}")
+    elif state[0] != previous[0]:
+        log(f"检测到整机重新启动：boot={state[0]}，Via PID={state[1]}")
+    elif state[1] != previous[1]:
+        log(f"Via 进程变化（整机未重启）：{previous[1]} -> {state[1]}")
+    return state
 
 
-def ensure(reload=False):
+def ensure():
     serial = connected_lx04()
     recovered = False
     if not serial:
@@ -180,16 +225,27 @@ def ensure(reload=False):
     target = mac_ip()
     if not target:
         return None
-    if not proxy_ready(serial, target):
+    ready = proxy_ready(serial, target)
+    if ready is None:
+        return None
+    if ready is False:
+        # 连续三次确认代理确实失效才修复，短暂网络抖动不重建。
+        for _ in range(2):
+            time.sleep(1)
+            ready = proxy_ready(serial, target)
+            if ready is not False:
+                break
+        if ready is None:
+            return None
+    if ready is False:
         if not install_proxy(serial, target):
             return None
         recovered = True
 
     if recovered:
         save_endpoint(serial)
-        print(f"[adb-bridge] 已连接 LX04：{serial}，目标 Mac：{target}", flush=True)
-        if reload and reload_status(serial):
-            print("[adb-bridge] 已刷新当前状态页", flush=True)
+        log(f"已连接 LX04：{serial}，目标 Mac：{target}")
+        # ADB 重连不等于网页断线。页面靠自身超时轮询恢复，不发送按键或打开页签。
     return serial
 
 
@@ -212,10 +268,13 @@ def main():
         print("[adb-bridge] 找不到 adb", file=sys.stderr)
         return 1
 
+    device_state = None
     while True:
-        serial = ensure(reload=not args.open)
+        serial = ensure()
+        if serial:
+            device_state = observe_device(serial, device_state)
         if args.open and serial and server_alive() and open_status(serial):
-            print(f"[adb-bridge] 已打开 {URL}", flush=True)
+            log(f"已打开 {URL}")
             return 0
         if args.once:
             return 0 if serial else 1

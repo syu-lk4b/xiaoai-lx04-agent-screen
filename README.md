@@ -88,7 +88,7 @@ Mac 和音箱通过无线 ADB 连接后，运行开机自启安装脚本：
 ./scripts/install-agent.sh
 ```
 
-Via 会打开固定地址 `http://127.0.0.1:8477/`。这里的 `127.0.0.1` 指音箱本机，由代理转到 Mac 状态服务，因此 Mac 的 DHCP 地址变化后不需要改音箱书签。断线恢复时代理会刷新当前页，不会新增页签。
+Via 会在当前页签打开固定地址 `http://127.0.0.1:8477/`。这里的 `127.0.0.1` 指音箱本机，由代理转到 Mac 状态服务，因此 Mac 的 DHCP 地址变化后不需要改音箱书签。断线恢复时只修复代理，由页面自动重试请求，不会刷新整页或新增页签。
 
 代理默认自动读取 Mac 的 Wi-Fi IPv4。如果你的 Wi-Fi 不在 `en0`，按 [使用说明](docs/使用说明.md#指定-mac-的局域网地址可选) 配置 `mac_ip`。
 
@@ -132,7 +132,7 @@ Via 会打开固定地址 `http://127.0.0.1:8477/`。这里的 `127.0.0.1` 指�
 
 ## 换成你自己的背景
 
-`display/` 下的 `meili.mp4`（雪山）和 `canyon.mp4`（峡谷）是已经处理好的，直接能用。
+默认使用 `display/` 下的 `meili-lite.mp4`（雪山）和 `canyon-lite.mp4`（峡谷）：800×480、12fps、H.264 Baseline、无 B 帧，保持原播放速度以降低解码负担。原来的 `meili.mp4` 和 `canyon.mp4` 仍保留，便于回退。
 
 想换成自己的素材，注意这几条——都是踩出来的：
 
@@ -140,7 +140,7 @@ Via 会打开固定地址 `http://127.0.0.1:8477/`。这里的 `127.0.0.1` 指�
 
 **调色烘进视频文件，别用 CSS filter。** 每帧多跑一次色彩矩阵，这台机器的 GPU 扛不住。
 
-**编码用 H.264，像素格式 `yuv420p`**。这机器没有 VP8/VP9/AV1 解码器。
+**编码用 H.264 Baseline，像素格式 `yuv420p`，建议 12fps、无 B 帧**。保持视频背景时，优先降低解码负担。
 
 **循环必须首尾同帧**，否则每转一圈跳一下。两个办法：正放接倒放（pingpong），或者把开头几帧挪到片尾用溶解接回来。
 
@@ -148,10 +148,10 @@ Via 会打开固定地址 `http://127.0.0.1:8477/`。这里的 `127.0.0.1` 指�
 
 ```bash
 ffmpeg -i 你的素材.mov \
-  -filter_complex "[0:v]fps=24,crop=3600:2160:120:0,scale=800:480,format=yuv420p[v];\
+  -filter_complex "[0:v]fps=12,crop=3600:2160:120:0,scale=800:480,format=yuv420p[v];\
 [v]split[a][b];[b]reverse,trim=start_frame=1,setpts=PTS-STARTPTS[r];[a][r]concat=n=2:v=1[out]" \
-  -map "[out]" -an -c:v libx264 -profile:v high -pix_fmt yuv420p \
-  -crf 21 -g 48 -movflags +faststart -y display/你的背景.mp4
+  -map "[out]" -an -c:v libx264 -profile:v baseline -level:v 3.0 -pix_fmt yuv420p \
+  -crf 21 -g 24 -movflags +faststart -y display/你的背景.mp4
 ```
 
 然后改 `display/index.html` 里的 `SRC`。
@@ -179,6 +179,9 @@ Claude 会话日志 ┘    （每 2 秒一次快照）         （每 2 秒拉�
 
 ## 遇到问题
 
+**反复闪退、黑屏或重复开页签**
+本版只加载当前可见页的视频，页面请求五秒超时且不并发堆积；ADB 失联不会自动刷新浏览器，显式打开也复用当前页签。更新后在 Mac 运行 `python3 scripts/adb-bridge.py --open` 加载新版页面，并重启常驻代理。验证结果、日志说明与回退方法见 [稳定性说明](docs/稳定性说明.md)。这些修复降低已知风险，不代表已排除所有系统重启或 Wi-Fi 问题。
+
 **只露出左上角一块、字特别大**
 viewport 被锁死了。这块屏物理 800×480，但浏览器眼里只有 534×320（dpr=1.5）。确认 `index.html` 的 viewport 那行没被改坏。
 
@@ -199,7 +202,7 @@ viewport 被锁死了。这块屏物理 800×480，但浏览器眼里只有 534�
 
 - **[影视飓风](https://www.ysjf.com/material)** —— 背景视频衍生自他们公开发布的免费样片。
 
-  仓库里的 `display/meili.mp4` 和 `display/canyon.mp4` **不是原片**：已从 4K 裁切缩放到
+  仓库里的 `display/meili.mp4`、`display/canyon.mp4` 及对应的 `*-lite.mp4` **不是原片**：已从 4K 裁切缩放到
   800×480、重新调色（色温与饱和度均大幅调整）、转码成 H.264 并重排为无缝循环，
   只作为本项目的界面背景。原始素材请到 [飓风素材库](https://www.ysjf.com/material) 获取。
   如果权利人认为此处使用不当，请提 issue 告知，我会立即移除。

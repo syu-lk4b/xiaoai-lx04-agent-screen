@@ -130,10 +130,7 @@
   .head .when { margin-left:auto; text-align:right; line-height:1.32; }
   .head .when .d { font-size:18px; color:rgba(255,255,255,.88); }
   .head .when .l { font-size:18px; color:rgba(255,255,255,.5); }
-  /* step-end：0% 的值保持到 50% 再硬跳，是干净的方波，不是渐变 */
-  .when .cl { -webkit-animation:blink 1s step-end infinite; animation:blink 1s step-end infinite; }
-  @-webkit-keyframes blink { 0% { opacity:1 } 50% { opacity:.16 } }
-  @keyframes blink { 0% { opacity:1 } 50% { opacity:.16 } }
+  /* 旧 WebView 的 CSS 常驻动画会持续唤醒绘制；冒号由 500ms 定时器离散闪烁。 */
   /* 离线就是「停住」的信号，冒号定住 */
   body.offline .cl { -webkit-animation:none; animation:none; }
   body.offline .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
@@ -187,32 +184,24 @@
   .recent .go.on { background:rgba(76,217,115,.20); color:#7BE39A; }
   /* grid 要 Chrome 57、flex gap 要 84，这块屏都够不着，退回 flex + margin */
   .jobs { flex:1; min-width:0; display:flex; height:74px; }
-  .j { flex:1 1 0; display:flex; align-items:center; min-width:0;
+  .j { position:relative; flex:1 1 0; display:flex; align-items:center; min-width:0;
        padding:0 9px; margin-right:12px; border-radius:10px; }
   .j:last-child { margin-right:0; }
 
-  /* 刚做完：头 24 秒是抢眼的绿光，之后落到一层淡底一直留到第 10 分钟才淡出。
-     这块屏是偶尔瞥一眼的，只闪 10 秒等于没有——离开倒杯咖啡回来还得能看见。
-     百分比全是按 600s 换算的（1.3%≈8s，4%≈24s，92%≈9.2min），
-     用 linear：节奏已经由关键帧自己排好，再叠缓动会把时间轴拧歪。 */
-  .j.fresh { -webkit-animation:fresh 600s linear 1 both; animation:fresh 600s linear 1 both; }
-  @-webkit-keyframes fresh { 0%  { background-color:rgba(52,211,120,.30); }
-                            1.3% { background-color:rgba(52,211,120,.26); }
-                              4% { background-color:rgba(52,211,120,.10); }
-                             92% { background-color:rgba(52,211,120,.10); }
-                            100% { background-color:rgba(52,211,120,0); } }
-  @keyframes fresh { 0%  { background-color:rgba(52,211,120,.30); }
-                    1.3% { background-color:rgba(52,211,120,.26); }
-                      4% { background-color:rgba(52,211,120,.10); }
-                     92% { background-color:rgba(52,211,120,.10); }
-                    100% { background-color:rgba(52,211,120,0); } }
+  /* 完成高亮由两秒轮询更新深浅，避免 background-color 动画持续重绘十分钟。 */
+  .j.fresh { background:rgba(52,211,120,.10); }
 
   /* 该你了（要授权 / 在问你）：不会自己消失，一直呼吸 */
-  .j.wait { -webkit-animation:wait 1.9s ease-in-out infinite; animation:wait 1.9s ease-in-out infinite; }
-  @-webkit-keyframes wait { 0%,100% { background-color:rgba(255,166,56,.09); }
-                              50%   { background-color:rgba(255,166,56,.24); } }
-  @keyframes wait { 0%,100% { background-color:rgba(255,166,56,.09); }
-                      50%   { background-color:rgba(255,166,56,.24); } }
+  .j.wait { background:rgba(255,166,56,.09); }
+  .j.wait::before {
+    content:''; position:absolute; top:0; right:0; bottom:0; left:0;
+    border-radius:inherit; background:rgba(255,166,56,.15); pointer-events:none;
+    /* 只提升这块小提示层，opacity 呼吸不再重绘整张卡片。 */
+    will-change:opacity; -webkit-animation:wait 1.9s ease-in-out infinite;
+    animation:wait 1.9s ease-in-out infinite;
+  }
+  @-webkit-keyframes wait { 0%,100% { opacity:0; } 50% { opacity:1; } }
+  @keyframes wait { 0%,100% { opacity:0; } 50% { opacity:1; } }
 
   .j .ic { width:24px; height:24px; flex:none; margin-right:11px; border-radius:50%; }
   .j .tx { flex:1 1 0; min-width:0; overflow:hidden; }
@@ -220,6 +209,7 @@
   .j .tt .mv { white-space:nowrap; }
   /* 只有装不下的名字才加 run：滚一整份的宽度，两份首尾相接所以无缝 */
   .j .tt.run .mv { -webkit-animation:mq linear infinite; animation:mq linear infinite; }
+  .j .tt.run .mv { will-change:transform; }
   .j .tt.run .mv span { padding-right:56px; }
   @-webkit-keyframes mq { 0%,14%   { -webkit-transform:translateX(0); }
                           86%,100% { -webkit-transform:translateX(-50%); } }
@@ -261,6 +251,19 @@
   html.vid-a .page.a .vid, html.vid-b .page.b .vid { opacity:1; }
   html.vidx-a .page.a .photo { display:none; }
   html.vidx-b .page.b .photo { display:none; }
+  html.page-hidden .photo, html.page-hidden .cl, html.page-hidden .j, html.page-hidden .j::before {
+    -webkit-animation-play-state:paused; animation-play-state:paused;
+  }
+  .deck:not(.p1) .page.b *, .deck.p1 .page.a *,
+  .deck:not(.p1) .page.b .j::before, .deck.p1 .page.a .j::before {
+    -webkit-animation-play-state:paused !important; animation-play-state:paused !important;
+  }
+  html.stable .photo, html.stable .cl, html.stable .j, html.stable .mv, html.stable .j::before {
+    -webkit-animation:none !important; animation:none !important;
+  }
+  html.stable .j.fresh { background:rgba(52,211,120,.10); }
+  html.stable .j.wait { background:rgba(255,166,56,.18); }
+  .j .ic, .j .tx { position:relative; z-index:1; }
 
 </style>
 </head>
@@ -355,7 +358,9 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let offline = 0;
+let offline = 0, polling = false;
+const stable = /[?&]stable=1(?:&|$)/.test(location.search);
+if (stable) document.documentElement.classList.add('stable');
 
 const pad = n => (n < 10 ? '0' : '') + n;
 const DAY = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
@@ -414,7 +419,7 @@ function subline(t) {
 
 const esc = s => String(s).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
 
-const FRESH = 600;  // 秒。和上面 .j.fresh 的动画时长必须一致
+const FRESH = 600;
 
 function jobClass(t) {
   if (t.state === 'NeedsApproval') return ' wait';
@@ -422,17 +427,21 @@ function jobClass(t) {
   return '';
 }
 
-// 负 delay：页面是中途打开的话，动画从它本该在的位置接着播，而不是重头来
-function jobStyle(t) {
+function freshColor(t) {
   if (t.state !== 'Done' || t.age_seconds >= FRESH) return '';
-  const d = '-' + t.age_seconds + 's';
-  return ` style="-webkit-animation-delay:${d};animation-delay:${d}"`;
+  const alpha = t.age_seconds < 24 ? .30 - .20 * t.age_seconds / 24 : .10;
+  return 'rgba(52,211,120,' + alpha.toFixed(3) + ')';
+}
+
+function jobStyle(t) {
+  const color = freshColor(t);
+  return color ? ' style="background-color:' + color + '"' : '';
 }
 
 function renderJobs(page, tasks) {
   // 只放得下 3 个；不够就空着，不编
   const items = (tasks || []).slice(0, 3);
-  // 不把高亮算进 key：fresh 动画用 both 自己收尾，为摘 class 重建 DOM 只会打断走马灯
+  // 高亮单独更新，不为摘 class 重建 DOM，避免打断走马灯。
   const key = items.map(t => t.project + '|' + t.state).join('~');
   const jobs = page.el.querySelector('.jobs');
 
@@ -453,6 +462,13 @@ function renderJobs(page, tasks) {
   // 耗时每次都刷，但只写文本不动结构，走马灯不受影响
   const subs = jobs.querySelectorAll('.sb');
   items.forEach((t, i) => { if (subs[i]) subs[i].innerHTML = subline(t); });
+  const rows = jobs.querySelectorAll('.j');
+  items.forEach((t, i) => {
+    if (!rows[i]) return;
+    const className = 'j' + jobClass(t);
+    if (rows[i].className !== className) rows[i].className = className;
+    rows[i].style.backgroundColor = freshColor(t);
+  });
 }
 
 function marquee(jobs) {
@@ -480,24 +496,38 @@ const deck = $('deck'), dotEls = $('dots').children;
 let view = 'codex', pin = null, pinAt = 0;
 const PIN_MS = 60000;   // 手动滑动后钉住多久，之后交还自动跟随
 
+function syncVideos() {
+  const root = document.documentElement;
+  for (const k in PAGES) {
+    const v = PAGES[k].el.querySelector('.vid');
+    if (!v || !v._source || v._failed) continue;
+    const side = k === 'codex' ? 'a' : 'b';
+    if (document.hidden || k !== view) {
+      if (v.getAttribute('src')) {
+        v.pause();
+        clearTimeout(v._fade);
+        v.removeAttribute('src');
+        v.load();                       // 释放隐藏页的解码器和视频缓冲
+        root.classList.remove('vid-' + side, 'vidx-' + side);
+      }
+    } else if (offline >= 3) {
+      v.pause();
+    } else if (!v.getAttribute('src')) {
+      v.src = v._source;                // 等 loadeddata 再 play，避免老 WebView 的 AbortError
+      root.classList.add('vid-' + side);
+    } else if (v.readyState >= 2 && v.paused) {
+      const p = v.play();
+      if (p && p.catch) p.catch(function () {});
+    }
+  }
+}
+
 function show(k) {
   if (k === view || !PAGES[k]) return;
   view = k;
   // 分页状态挂 deck 不挂 body：render() 每次都会清掉 body.className
   deck.classList.toggle('p1', k === 'claude');   // 用 toggle，别整体赋值——会冲掉 dragging
-  // 视频占着 VPU，看不见时必须停——比暂停运镜更值得省
-  for (const kk in PAGES) {
-    const vv = PAGES[kk].el.querySelector('.vid');
-    if (!vv || !vv.src) continue;
-    // 只暂停已经播出过的：还没触发 playing 就 pause，它这辈子都不会触发，
-    // 那一页就会永远卡在图片上（大文件加载慢时必现）
-    if (kk === k) {
-      // 这一页刚才在视口外时，浏览器可能已经把加载掐了，且不会自己恢复。
-      // readyState 还是 0 就主动再拉一次，否则滑过来只有一张静止的图片。
-      if (vv.readyState === 0) vv.load();
-      vv.play().catch(function () {});
-    } else if (vv._ok) vv.pause();
-  }
+  syncVideos();
   dotEls[0].className = k === 'codex' ? 'on' : '';
   dotEls[1].className = k === 'claude' ? 'on' : '';
 }
@@ -524,6 +554,13 @@ function renderPage(page, a) {
 function setClock(page, hh, mm) {
   page.el.querySelector('.hh').textContent = hh;
   page.el.querySelector('.mm').textContent = mm;
+}
+
+function blinkClock() {
+  const visible = stable || offline >= 3 || document.hidden || Date.now() % 1000 < 500;
+  for (const k in PAGES) {
+    PAGES[k].el.querySelector('.cl').style.visibility = visible ? '' : 'hidden';
+  }
 }
 
 function render(d) {
@@ -557,21 +594,43 @@ $('speak').onclick = async () => {
   } catch (e) { /* 下一次轮询会把状态拉回来 */ }
 };
 
-async function tick() {
-  try {
-    const r = await fetch('/api/status', { cache: 'no-store' });
-    if (!r.ok) throw new Error(r.status);
-    render(await r.json());
-    offline = 0;
-  } catch (e) {
+function tick() {
+  if (polling || document.hidden) return;
+  polling = true;
+  const xhr = new XMLHttpRequest();
+  // Chromium 61 没有 AbortController。原来的 fetch 断网时可能一直挂起，
+  // 两秒一轮会累积连接；XHR 超时让每个页面始终最多只有一个在途请求。
+  xhr.open('GET', '/api/status', true);
+  xhr.timeout = 5000;
+  function failed() {
+    polling = false;
     // 连续三次失败才判定离线，避免瞬时抖动就把屏幕灰掉
     if (++offline >= 3) {
       document.body.className = 'offline';
       for (const k in PAGES) setClock(PAGES[k], '--', '--');
       renderSpeak(null);
+      syncVideos();
     }
   }
+  xhr.onload = function () {
+    polling = false;
+    try {
+      if (xhr.status !== 200) throw new Error(xhr.status);
+      const data = JSON.parse(xhr.responseText);
+      offline = 0;
+      render(data);
+      syncVideos();
+    } catch (e) { failed(); }
+  };
+  xhr.onerror = xhr.ontimeout = xhr.onabort = failed;
+  xhr.send();
 }
+
+document.addEventListener('visibilitychange', function () {
+  document.documentElement.classList.toggle('page-hidden', document.hidden);
+  syncVideos();
+  if (!document.hidden) tick();
+}, false);
 // ── 手势：跟手 + 磁吸 ──
 // 不能靠 touchmove 里的 preventDefault：老 WebView 上 document 级 touchmove 默认 passive，
 // 那句话会被静默忽略，浏览器照样自己滚。真正管用的是 CSS 的 touch-action:pan-y。
@@ -666,7 +725,7 @@ function advance(page, shots) {
 }
 
 setInterval(function () {
-  if (offline >= 3) return;            // 离线是「定格」，不换图
+  if (stable || offline >= 3) return;  // 稳定模式使用静态背景
   for (const k in PAGES) advance(PAGES[k], SHOTS[k]);
 }, SHOT_MS);
 
@@ -676,46 +735,52 @@ if (forced) pinTo(forced[1]);
 
 tick();
 setInterval(tick, 2000);
+blinkClock();
+setInterval(blinkClock, 500);
 
 // ── 视频背景：能播就播，播不了就安静地留在图片上 ──
 // 不用 autoplay 属性：靠 playing 事件确认「真的在放」才切换，
 // 老引擎没有 play() 的 Promise，playing 是两种引擎都可靠的信号。
 (function () {
-  if (/[?&]bg=img/.test(location.search)) return;   // 一键回退到图片
+  if (stable || /[?&]bg=img/.test(location.search)) return;
   const root = document.documentElement;
   // ?v= 由服务端按 mp4 的 mtime 填入，重烘后 URL 就变了，绕开浏览器的旧副本
-  const SRC = { a: 'meili.mp4?v=__V__', b: 'canyon.mp4?v=__V__' };  // a=Codex 雪山，b=Claude 峡谷
+  const SRC = { a: 'meili-lite.mp4?v=__V__', b: 'canyon-lite.mp4?v=__V__' };
   for (const side in SRC) {
     const v = document.querySelector('.page.' + side + ' .vid');
     if (!v) continue;
-    // 判据分两级，因为浏览器对视口外的 video 既不播也不加载——
-    // playing 和 loadeddata 都等不到，后台那一页会永远卡在图片上。
-    //
-    // 一级（乐观）：设了 src 就让视频层淡入。这一步安全，因为 .vid 没有 poster，
-    //   无数据时渲染成透明，底下垫着的 .photo 直接透上来，看到的仍是正常画面。
-    // 二级（保守）：真拿到第一帧才摘掉图片层。解不动就一直垫着，只多一层合成。
+    v._source = SRC[side];
+    v.muted = true;
     v.addEventListener('loadeddata', (function (s, el) {
       return function () {
-        el._ok = 1;
-        if (root.className.indexOf('vidx-' + s) < 0) {
-          setTimeout(function () { root.className += ' vidx-' + s; }, 900);
-        }
-        if ((s === 'a') !== (view === 'codex')) {
-          el.pause();                                  // 不是当前页就让出 VPU
-        } else if (el.paused) {
-          // 首帧到位后补一次起播。紧跟 src 的那次 play() 会被 src 触发的加载算法
-          // 以 AbortError 拒掉：实测真机上 readyState=4、error 为空、图片层也已摘掉，
-          // 但 paused 恒为 true、currentTime 停在 0——整页安静地定格，看不出哪里坏。
+        if (!el.getAttribute('src') || document.hidden || offline >= 3 ||
+            (s === 'a') !== (view === 'codex')) return;
+        if (el.paused) {
           const pp = el.play();
           if (pp && pp.catch) pp.catch(function () {});
         }
       };
     })(side, v), false);
-    v.src = SRC[side];
-    root.className += ' vid-' + side;
-    const p = v.play();
-    if (p && p.catch) p.catch(function () {});      // 被拒不吵，图片兜底
+    v.addEventListener('playing', (function (s, el) {
+      return function () {
+        clearTimeout(el._fade);
+        el._fade = setTimeout(function () {
+          if (!el.paused && el.getAttribute('src')) root.classList.add('vidx-' + s);
+        }, 900);
+      };
+    })(side, v), false);
+    v.addEventListener('error', (function (s, el) {
+      return function () {
+        el._failed = true;
+        clearTimeout(el._fade);
+        el.pause();
+        el.removeAttribute('src');
+        el.load();
+        root.classList.remove('vid-' + s, 'vidx-' + s);
+      };
+    })(side, v), false);
   }
+  syncVideos();
 })();
 
 </script>
