@@ -1,0 +1,91 @@
+diff --git a/mibe.py b/mibe.py
+index 9b11ab3..24feee5 100755
+--- a/mibe.py
++++ b/mibe.py
+@@ -27,3 +27,4 @@ KIMI_SESSIONS_DIR = Path.home() / ".kimi" / "sessions"
+ 
+-POLL_INTERVAL = 0.5
++# 一秒内感知新事件；未增长文件不会再打开，常驻扫描不会烧 CPU。
++POLL_INTERVAL = 1.0
+ TOKEN_STORE = str(Path.home() / ".mi.token")
+@@ -152,2 +153,4 @@ class XiaoAiNotifier:
+         self._keepalive_task: asyncio.Task | None = None
++        # 本地改动：运行时静音开关。置 True 后不出声、也不动音箱音量。
++        self.muted = False
+ 
+@@ -239,2 +242,4 @@ class XiaoAiNotifier:
+         """Save current volume then mute."""
++        if self.muted:
++            return  # 播报已关，不该动用户的音量
+         vol = await self.get_volume()
+@@ -254,3 +259,3 @@ class XiaoAiNotifier:
+     async def speak(self, text: str) -> None:
+-        if not self._mina or not self._device_id:
++        if not self._mina or not self._device_id or self.muted:
+             return
+@@ -342,3 +347,3 @@ def list_session_files(sessions_dir: Path, pattern: str = "*.jsonl") -> list[Pat
+         return []
+-    return sorted(sessions_dir.rglob(pattern))
++    return list(sessions_dir.rglob(pattern))
+ 
+@@ -350,2 +355,5 @@ def list_session_files(sessions_dir: Path, pattern: str = "*.jsonl") -> list[Pat
+ CODEX_WATCHED_EVENTS = frozenset({"task_started", "task_complete", "turn_aborted"})
++
++# 本地改动：状态屏挂载点。设置后每条 Codex 事件都会先交给它，再走播报。
++STATUS_OBSERVER: Callable[[dict, Path, "XiaoAiNotifier"], None] | None = None
+ CODEX_TTS_WORD_TOKEN_RE = re.compile(r"[\u3400-\u9fff]|[^\s\u3400-\u9fff]+")
+@@ -396,2 +404,4 @@ def _build_codex_request_user_input_tts(payload: dict) -> tuple[str, int]:
+                     candidate = _sanitize_codex_question_text(item.get("header"))
++                if not candidate:
++                    candidate = _sanitize_codex_question_text(item.get("title"))
+                 if candidate:
+@@ -483,3 +493,4 @@ async def _handle_codex_request_user_input(
+         return
+-    if payload.get("name") != "request_user_input":
++    # request_user_input_async 是同族新变体，前缀匹配以免漏播
++    if not str(payload.get("name") or "").startswith("request_user_input"):
+         return
+@@ -524,2 +535,5 @@ async def process_codex_event(
+     """Process a single Codex event."""
++    if STATUS_OBSERVER is not None:
++        STATUS_OBSERVER(event, path, notifier)
++
+     payload = event.get("payload")
+@@ -659,2 +673,4 @@ async def read_new_lines(
+         old_offset = 0
++    elif file_size == old_offset:
++        return
+ 
+@@ -748,2 +764,7 @@ def build_parser() -> argparse.ArgumentParser:
+     )
++    mon.add_argument(
++        "--no-speaker",
++        action="store_true",
++        help="Skip Xiaomi login; status output only, no TTS.",
++    )
+ 
+@@ -807,3 +828,7 @@ async def cmd_monitor(args: argparse.Namespace) -> int:
+     notifier = XiaoAiNotifier(verbose=args.verbose)
+-    await notifier.login()
++    if getattr(args, "no_speaker", False):
++        # 不登录小米。XiaoAiNotifier 各方法在未登录时自身就是空操作。
++        print("[mibe] --no-speaker: 跳过小米登录，只输出状态")
++    else:
++        await notifier.login()
+ 
+diff --git a/tests/test_mibe.py b/tests/test_mibe.py
+index b67202e..151a141 100644
+--- a/tests/test_mibe.py
++++ b/tests/test_mibe.py
+@@ -619,2 +619,11 @@ class TestReadNewLines:
+ 
++    @pytest.mark.asyncio
++    async def test_unchanged_file_is_not_opened(self, tmp_path):
++        test_file = tmp_path / "test.jsonl"
++        test_file.write_text('{"type": "test"}\n')
++        offsets = {test_file: test_file.stat().st_size}
++
++        with mock.patch.object(Path, "open", side_effect=AssertionError):
++            await mibe.read_new_lines(test_file, offsets, mock.AsyncMock(), mock.AsyncMock())
++
+     @pytest.mark.asyncio
