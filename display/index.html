@@ -39,10 +39,13 @@
     position:fixed; top:0; left:0; width:800px; height:480px; overflow:hidden; z-index:1;
   }
   .deck {
-    position:absolute; top:0; left:0; width:1600px; height:480px;
+    position:absolute; top:0; left:0; width:4000px; height:480px;
     -webkit-transition:-webkit-transform .28s ease; transition:transform .28s ease;
   }
   .deck.p1 { -webkit-transform:translateX(-800px); transform:translateX(-800px); }
+  .deck.p2 { -webkit-transform:translateX(-1600px); transform:translateX(-1600px); }
+  .deck.p3 { -webkit-transform:translateX(-2400px); transform:translateX(-2400px); }
+  .deck.p4 { -webkit-transform:translateX(-3200px); transform:translateX(-3200px); }
   /* 滑动是全局最重的一帧（1600×480 整体位移），期间把运镜停掉、
      并临时提示合成层。will-change 只在这 0.3 秒存在，不常驻。 */
   .deck.dragging { will-change:transform; }
@@ -50,6 +53,9 @@
   .page { position:absolute; top:0; width:800px; height:480px; }
   .page.a { left:0; }
   .page.b { left:800px; }
+  .page.s { left:1600px; }
+  .page.c { left:2400px; }
+  .page.f { left:3200px; }
 
   /* 指示点落在卡片底部那 30px 空白里，不跟着 deck 平移 */
   .dots { position:fixed; left:0; width:800px; bottom:14px; text-align:center; z-index:5; }
@@ -136,7 +142,10 @@
   body.offline .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
   /* 看不见的那一页不必动 —— 省一半合成，且暂停保相位，滑回来不跳 */
   .deck:not(.p1) .page.b .photo,
-  .deck.p1       .page.a .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
+  .deck.p1       .page.a .photo,
+  .deck.p2       .page.a .photo,
+  .deck.p3       .page.a .photo,
+  .deck.p4       .page.a .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
 
   .head .when .v { margin-top:1px; font-size:30px; font-weight:500; letter-spacing:-.012em;
                    font-variant-numeric:tabular-nums; }
@@ -254,8 +263,10 @@
   html.page-hidden .photo, html.page-hidden .cl, html.page-hidden .j, html.page-hidden .j::before {
     -webkit-animation-play-state:paused; animation-play-state:paused;
   }
-  .deck:not(.p1) .page.b *, .deck.p1 .page.a *,
-  .deck:not(.p1) .page.b .j::before, .deck.p1 .page.a .j::before {
+  .deck:not(.p1) .page.b *, .deck.p1 .page.a *, .deck.p2 .page.a *, .deck.p3 .page.a *,
+  .deck.p4 .page.a *,
+  .deck:not(.p1) .page.b .j::before, .deck.p1 .page.a .j::before,
+  .deck.p2 .page.a .j::before, .deck.p3 .page.a .j::before, .deck.p4 .page.a .j::before {
     -webkit-animation-play-state:paused !important; animation-play-state:paused !important;
   }
   html.stable .photo, html.stable .cl, html.stable .j, html.stable .mv, html.stable .j::before {
@@ -264,6 +275,111 @@
   html.stable .j.fresh { background:rgba(52,211,120,.10); }
   html.stable .j.wait { background:rgba(255,166,56,.18); }
   .j .ic, .j .tx { position:relative; z-index:1; }
+
+  /* ── Mac 控制页 ──
+     不放视频和运镜：这一页是拿来点的，GPU 留给触摸反馈。 */
+  /* 状态页夜景、控制页黄昏：和 Codex 雪山 / Claude 峡谷同一路风景，换个时辰。
+     图由 scripts/backgrounds.html 程序生成。静态铺底，不放视频也不运镜——
+     这两页上面压着图表和图标，GPU 留给它们。上面再罩一层压暗，保证字和图标的对比度。 */
+  .page.s .card {
+    background:linear-gradient(180deg, rgba(5,8,14,.30) 0%, rgba(5,8,14,.50) 100%),
+               #05080e url(night.jpg) center / cover no-repeat;
+  }
+  .page.c .card {
+    background:linear-gradient(180deg, rgba(10,7,16,.25) 0%, rgba(10,7,16,.45) 100%),
+               #0d0b1c url(dusk.jpg) center / cover no-repeat;
+  }
+
+  /* ── Mac 状态页 ──
+     图表规格照 dataviz：2px 线、约 10% 面积底、≥8px 端点带 2px 底色环、发丝级网格。
+     触屏没有悬停，所以不做 tooltip；数值都直接写在图上方。 */
+  .page.s .head .sub { margin-top:3px; font-size:15px; color:rgba(255,255,255,.55);
+                       white-space:nowrap; }
+  .tiles { margin-top:14px; }
+  .tiles .row { display:flex; }
+  .tiles .row + .row { margin-top:14px; }
+  /* flex gap 要 Chrome 84，用 margin 代替 */
+  .tile {
+    flex:1 1 0; min-width:0; height:150px; margin-right:16px; padding:12px 14px 0;
+    border-radius:16px; background:rgba(13,18,27,.74); border:1px solid rgba(255,255,255,.08);
+  }
+  .tile:last-child { margin-right:0; }
+  .tile .lb { font-size:15px; color:rgba(255,255,255,.55); line-height:1.2; white-space:nowrap; }
+  .tile .val { font-size:36px; font-weight:700; line-height:1.15; letter-spacing:-.02em; }
+  .tile .val i { font-style:normal; font-size:20px; font-weight:500; margin-left:3px;
+                 color:rgba(255,255,255,.55); }
+  .tile .val small { font-size:14px; font-weight:400; margin-left:8px; letter-spacing:0;
+                     color:rgba(255,255,255,.55); }
+  .tile svg { display:block; margin-top:6px; }
+  /* 网络：两条线共用一个轴（同单位），图例 = 色块短线 + 当前值 */
+  .tile .keys { float:right; font-size:14px; color:rgba(255,255,255,.75); line-height:18px;
+                font-variant-numeric:tabular-nums; }
+  .tile .keys span { margin-left:12px; white-space:nowrap; }
+  .tile .keys em { font-style:normal; }
+  .tile .keys b { display:inline-block; width:12px; height:2px; margin-right:5px;
+                  vertical-align:middle; border-radius:1px; }
+  /* 进程：一条细 meter，未填满的轨道是同色系浅一档 */
+  .proc { margin-top:9px; }
+  .proc .p { display:flex; align-items:center; height:30px; }
+  .proc .nm { flex:0 0 112px; font-size:15px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .proc .bar { flex:1 1 0; height:6px; margin:0 12px; border-radius:3px; background:rgba(57,135,229,.18); }
+  .proc .bar i { display:block; height:6px; border-radius:3px; background:#3987e5; }
+  .proc .pc { flex:0 0 44px; text-align:right; font-size:15px; color:rgba(255,255,255,.75);
+              font-variant-numeric:tabular-nums; }
+
+  /* 启动台式排布：图标在上、名字在下，图标是 Mac 本机应用的 .icns 现转的 */
+  /* 4×3：三行 92px 落在 116–392，底部留给提示和翻页点，三者互不压 */
+  .ctl { margin-top:8px; }
+  .ctl .row { display:flex; }
+  /* flex gap 要 Chrome 84，用 margin 代替 */
+  .ctl .app {
+    flex:1 1 0; height:92px; margin-right:12px; border-radius:18px; border:0;
+    background:transparent; color:#fff; font:inherit; text-align:center;
+    padding:6px 0 0; -webkit-tap-highlight-color:transparent; outline:none;
+  }
+  .ctl .app:last-child { margin-right:0; }
+  .ctl .ico { position:relative; display:block; width:60px; height:60px; margin:0 auto; }
+  /* 按下只动 transform：老 GPU 上这是唯一不触发重绘的反馈 */
+  .ctl .ico img {
+    display:block; width:60px; height:60px;
+    -webkit-transition:-webkit-transform .12s ease-out; transition:transform .12s ease-out;
+  }
+  .ctl .app:active .ico img, .ctl .app.hit .ico img {
+    -webkit-transform:scale(.88); transform:scale(.88);
+  }
+  .ctl .nm { display:block; margin-top:4px; font-size:16px; font-weight:500; line-height:1.2; }
+  /* 开着的开关：图标右上角一个绿点，和任务卡片的「完成」同色；格子太小，不再放状态字 */
+  .ctl .app.on .ico::after {
+    content:''; position:absolute; top:-4px; right:-4px; width:16px; height:16px;
+    border-radius:50%; background:#22C55E; border:3px solid #0d1219;
+  }
+  .ctl .app.bad .nm { color:#FF6B6B; }
+  .ctl-msg { position:absolute; left:0; right:0; bottom:34px; text-align:center;
+             font-size:15px; color:rgba(255,255,255,.55); }
+
+  /* ── 相册页 ──
+     「照片」App 识别出的最近几次旅行（bridge/photos.py）。图在 Mac 上已裁成屏幕尺寸：
+     横图 800×480 一张，竖图 400×480 两张并排。不做运镜——满屏照片平移是最贵的那种合成，
+     只在换图时做一次淡入。两层同前面的背景：底层恒不透明，只把上层从 0 淡到 1。 */
+  .page.f .card { background:#07090d; }
+  .sl { position:absolute; top:0; left:0; width:800px; height:480px; background:#07090d;
+        -webkit-transition:opacity 1.2s ease; transition:opacity 1.2s ease; }
+  .sl img { position:absolute; top:0; display:block; }
+  /* 上下两道压暗只给字和时钟垫底，照片中间不罩 */
+  .page.f .shade {
+    position:absolute; top:0; right:0; bottom:0; left:0; z-index:3; pointer-events:none;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,.42) 0%, rgba(0,0,0,0) 26%),
+      linear-gradient(0deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 32%);
+  }
+  .page.f .when { position:absolute; top:30px; right:36px; z-index:4; text-align:right; line-height:1.32; }
+  .page.f .when .d { font-size:16px; color:rgba(255,255,255,.85); }
+  .page.f .when .v { font-size:26px; font-weight:500; }
+  .page.f .cap { position:absolute; left:36px; bottom:40px; z-index:4; }
+  .page.f .cap .pl { font-size:28px; font-weight:700; letter-spacing:-.01em; line-height:1.15; }
+  .page.f .cap .dt { margin-top:2px; font-size:15px; color:rgba(255,255,255,.7); }
+  .page.f .none { position:absolute; top:0; left:0; width:800px; line-height:480px; z-index:4;
+                  text-align:center; font-size:18px; color:rgba(255,255,255,.55); }
 
 </style>
 </head>
@@ -352,9 +468,89 @@
       </div>
     </div>
     </div>
+    <div class="page s" data-k="sys">
+    <div class="card">
+      <div class="inner">
+        <div class="head">
+          <svg class="mark" viewBox="0 0 24 24" fill="#fff"><path d="M9 2h2v2h2V2h2v2h1a2 2 0 0 1 2 2v1h2v2h-2v2h2v2h-2v2h2v2h-2v1a2 2 0 0 1-2 2h-1v2h-2v-2h-2v2H9v-2H8a2 2 0 0 1-2-2v-1H4v-2h2v-2H4v-2h2V9H4V7h2V6a2 2 0 0 1 2-2h1zm-1 4v12h8V6zm2 2h4v8h-4z"/></svg>
+          <div class="id">
+            <div class="nm" id="sysModel">Mac</div>
+            <div class="sub" id="sysSub"></div>
+          </div>
+          <div class="when">
+            <div class="d today">—</div>
+            <div class="v clock"><span class="hh">--</span><span class="cl">:</span><span class="mm">--</span></div>
+          </div>
+        </div>
+        <!-- 图的宽高写死在 svg 上，按像素画：老 WebView 缩放 viewBox 会把 2px 线描粗 -->
+        <div class="tiles">
+          <div class="row">
+            <div class="tile"><div class="lb">CPU</div><div class="val" id="sysCpu">—</div><svg id="chCpu" width="196" height="64"></svg></div>
+            <div class="tile"><div class="lb">GPU</div><div class="val" id="sysGpu">—</div><svg id="chGpu" width="196" height="64"></svg></div>
+            <div class="tile"><div class="lb">Memory</div><div class="val" id="sysMem">—</div><svg id="chMem" width="196" height="64"></svg></div>
+          </div>
+          <div class="row">
+            <div class="tile"><div class="lb">Network<span class="keys"><span><b style="background:#3987e5"></b><em id="sysRx">—</em></span><span><b style="background:#d95926"></b><em id="sysTx">—</em></span></span></div><svg id="chNet" width="316" height="104"></svg></div>
+            <div class="tile"><div class="lb">Top processes</div><div class="proc" id="sysTop"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    </div>
+    <div class="page c" data-k="mac">
+    <div class="card">
+      <div class="inner">
+        <div class="head">
+          <svg class="mark" viewBox="0 0 24 24" fill="#fff"><path d="M3 4.5A1.5 1.5 0 0 1 4.5 3h15A1.5 1.5 0 0 1 21 4.5v10a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 14.5zM5 5v9h14V5zm3 13h8l.8 3H7.2z"/></svg>
+          <div class="id">
+            <div class="nm">Control</div>
+          </div>
+          <div class="when">
+            <div class="d today">—</div>
+            <div class="v clock"><span class="hh">--</span><span class="cl">:</span><span class="mm">--</span></div>
+          </div>
+        </div>
+        <!-- data-a 是 bridge/mac.py 白名单里的动作名，这里只是按钮，Mac 那头才说了算 -->
+        <div class="ctl" id="ctl">
+          <div class="row">
+            <button class="app" data-a="display_sleep"><span class="ico"><img src="icons/display_sleep.png" alt=""></span><span class="nm">熄屏</span></button>
+            <button class="app" data-a="screensaver"><span class="ico"><img src="icons/screensaver.png" alt=""></span><span class="nm">屏保</span></button>
+            <button class="app" data-a="awake" id="awake"><span class="ico"><img src="icons/awake.png" alt=""></span><span class="nm">防休眠</span></button>
+            <button class="app" data-a="music"><span class="ico"><img src="icons/music.png" alt=""></span><span class="nm">Music</span></button>
+          </div>
+          <div class="row">
+            <button class="app" data-a="ghostty"><span class="ico"><img src="icons/ghostty.png" alt=""></span><span class="nm">Ghostty</span></button>
+            <button class="app" data-a="iterm"><span class="ico"><img src="icons/iterm.png" alt=""></span><span class="nm">iTerm</span></button>
+            <button class="app" data-a="claude"><span class="ico"><img src="icons/claude.png" alt=""></span><span class="nm">Claude</span></button>
+            <button class="app" data-a="vscode"><span class="ico"><img src="icons/vscode.png" alt=""></span><span class="nm">VS Code</span></button>
+          </div>
+          <div class="row">
+            <button class="app" data-a="chrome"><span class="ico"><img src="icons/chrome.png" alt=""></span><span class="nm">Chrome</span></button>
+            <button class="app" data-a="wechat"><span class="ico"><img src="icons/wechat.png" alt=""></span><span class="nm">微信</span></button>
+            <button class="app" data-a="obsidian"><span class="ico"><img src="icons/obsidian.png" alt=""></span><span class="nm">Obsidian</span></button>
+            <button class="app" data-a="eastmoney"><span class="ico"><img src="icons/eastmoney.png" alt=""></span><span class="nm">东方财富</span></button>
+          </div>
+        </div>
+        <div class="ctl-msg" id="ctlMsg"></div>
+      </div>
+    </div>
+    </div>
+    <div class="page f" data-k="photo">
+    <div class="card">
+      <div class="sl" id="slA"></div>
+      <div class="sl" id="slB"></div>
+      <div class="shade"></div>
+      <div class="when">
+        <div class="d today">—</div>
+        <div class="v clock"><span class="hh">--</span><span class="cl">:</span><span class="mm">--</span></div>
+      </div>
+      <div class="cap"><div class="pl" id="phPlace"></div><div class="dt" id="phDate"></div></div>
+      <div class="none" id="phNone" hidden>图库里还没有旅行照片</div>
+    </div>
+    </div>
   </div>
   </div>
-  <div class="dots" id="dots"><i class="on"></i><i></i></div>
+  <div class="dots" id="dots"><i class="on"></i><i></i><i></i><i></i><i></i></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -491,10 +687,29 @@ const PAGES = {
   claude: { el: document.querySelector('.page.b'), key: null, used: true },
 };
 const deck = $('deck'), dotEls = $('dots').children;
+// 页序。状态页、控制页、相册页不在 PAGES 里：它们没有 agent 数据、背景和视频，只借用抬头的时钟
+const ORDER = ['codex', 'claude', 'sys', 'mac', 'photo'];
+const MAC = { el: document.querySelector('.page.c') };
+const SYS = { el: document.querySelector('.page.s') };
+const PHOTO = { el: document.querySelector('.page.f') };
+const EXTRA = [SYS, MAC, PHOTO];
 
 // ── 显示哪一页 ──
 let view = 'codex', pin = null, pinAt = 0;
-const PIN_MS = 60000;   // 手动滑动后钉住多久，之后交还自动跟随
+const PIN_MS = 60000;   // 手动滑动后钉住多久，之后交还自动轮播
+// 每页停多久：?rotate=N 改其他页（秒），?photo=N 改相册页，?rotate=0 关掉轮播。
+// 相册页停得久：照片是拿来慢慢看的，一分钟只够翻五张
+function secs(name, dflt) {
+  const m = location.search.match(new RegExp('[?&]' + name + '=(\\d+)'));
+  return (m ? +m[1] : dflt) * 1000;
+}
+const ROTATE_MS = secs('rotate', 60);
+const PHOTO_MS = secs('photo', 300);
+function dwell(k) { return k === 'photo' ? PHOTO_MS : ROTATE_MS; }
+// 两边都没任务在跑超过这么久，就当相框停在相册页；有任务跑起来再回去轮播。?idle=0 关掉
+const IDLE_MS = secs('idle', 600);
+let busyAt = Date.now(), idle = false;
+let rotateAt = Date.now();
 
 function syncVideos() {
   const root = document.documentElement;
@@ -523,23 +738,71 @@ function syncVideos() {
 }
 
 function show(k) {
-  if (k === view || !PAGES[k]) return;
+  const idx = ORDER.indexOf(k);
+  if (k === view || idx < 0) return;
   view = k;
   // 分页状态挂 deck 不挂 body：render() 每次都会清掉 body.className
-  deck.classList.toggle('p1', k === 'claude');   // 用 toggle，别整体赋值——会冲掉 dragging
+  for (let i = 1; i < ORDER.length; i++) {
+    deck.classList.toggle('p' + i, idx === i);   // 用 toggle，别整体赋值——会冲掉 dragging
+  }
   syncVideos();
-  dotEls[0].className = k === 'codex' ? 'on' : '';
-  dotEls[1].className = k === 'claude' ? 'on' : '';
+  for (let i = 0; i < dotEls.length; i++) dotEls[i].className = i === idx ? 'on' : '';
 }
 
 function pinTo(k) { pin = k; pinAt = Date.now(); show(k); }   // 手动：临时钉住
 
-function follow(active) {                                     // 自动：后端说了算
-  if (pin) {
-    if (Date.now() - pinAt < PIN_MS) return;
-    pin = null;                                               // 钉住到期，交还自动
+// 哪个 agent 在等你（要授权 / 在问你）。轮播会把它错过，所以它优先
+function waiting(d) {
+  for (const k in PAGES) {
+    const a = (d.agents || {})[k];
+    if (a && (a.tasks || []).some(t => t.state === 'NeedsApproval')) return k;
   }
-  show(active);
+  return null;
+}
+
+// 哪个 agent 正在干活。Working 超过 15 分钟没动静后端会报成 Stopped，这里不用再判超时
+function running(d) {
+  for (const k in PAGES) {
+    const a = (d.agents || {})[k];
+    if (a && (a.tasks || []).some(t => t.state === 'Working')) return k;
+  }
+  return null;
+}
+
+function follow(d) {                                          // 自动：轮播，等你的优先
+  const now = Date.now();
+  if (pin) {
+    if (now - pinAt < PIN_MS) return;
+    pin = null;                                               // 钉住到期，交还自动
+    rotateAt = now;                                           // 从当前页重新计时，别立刻跳走
+  }
+  const urgent = waiting(d);
+  if (urgent) {                                               // 停在等你的那页，直到你处理掉
+    show(urgent);
+    rotateAt = now;
+    return;
+  }
+  const work = running(d);
+  if (work) {
+    busyAt = now;
+    if (idle) {                                               // 相框模式下来活了：直接去干活的那页
+      idle = false;
+      show(work);
+      rotateAt = now;
+      return;
+    }
+  } else if (IDLE_MS && album.slides.length && now - busyAt >= IDLE_MS) {
+    idle = true;                                              // 闲着：停在相册，不轮播
+    show('photo');
+    rotateAt = now;
+    return;
+  }
+  if (ROTATE_MS && now - rotateAt >= dwell(view)) {
+    let next = ORDER[(ORDER.indexOf(view) + 1) % ORDER.length];   // 走到头绕回第一页
+    if (next === 'photo' && !album.slides.length) next = ORDER[0];  // 没照片就别停在空页上
+    show(next);
+    rotateAt = now;
+  }
 }
 
 function renderPage(page, a) {
@@ -561,6 +824,7 @@ function blinkClock() {
   for (const k in PAGES) {
     PAGES[k].el.querySelector('.cl').style.visibility = visible ? '' : 'hidden';
   }
+  EXTRA.forEach(function (page) { page.el.querySelector('.cl').style.visibility = visible ? '' : 'hidden'; });
 }
 
 function render(d) {
@@ -574,8 +838,14 @@ function render(d) {
     setClock(page, pad(now.getHours()), pad(now.getMinutes()));
     if (a) renderPage(page, a);
   }
+  EXTRA.forEach(function (page) {
+    page.el.querySelector('.today').textContent = date;
+    setClock(page, pad(now.getHours()), pad(now.getMinutes()));
+  });
+  renderMac(d.mac);
+  renderSys(d.system);
 
-  follow(d.active);
+  follow(d);
   renderSpeak(d.speaking);
 }
 
@@ -589,7 +859,8 @@ function renderSpeak(v) {
 
 $('speak').onclick = async () => {
   try {
-    const r = await fetch('/api/speak', { method: 'POST' });
+    // 写操作都要带这个头，服务端靠它挡掉跨站请求（见 bridge/access.py）
+    const r = await fetch('/api/speak', { method: 'POST', headers: { 'X-LX04-Action': '1' } });
     renderSpeak((await r.json()).speaking);
   } catch (e) { /* 下一次轮询会把状态拉回来 */ }
 };
@@ -608,6 +879,7 @@ function tick() {
     if (++offline >= 3) {
       document.body.className = 'offline';
       for (const k in PAGES) setClock(PAGES[k], '--', '--');
+      EXTRA.forEach(function (page) { setClock(page, '--', '--'); });
       renderSpeak(null);
       syncVideos();
     }
@@ -637,7 +909,7 @@ document.addEventListener('visibilitychange', function () {
 const SNAP = 200;      // 拖过这么多才翻页，否则弹回原处
 let drag = false, startX = 0, startY = 0, baseX = 0, axis = null, lastTouch = 0;
 
-function baseOf(k) { return k === 'claude' ? -800 : 0; }
+function baseOf(k) { return -800 * ORDER.indexOf(k); }
 
 document.addEventListener('touchstart', function (e) {
   const t = e.changedTouches[0];
@@ -657,7 +929,7 @@ document.addEventListener('touchmove', function (e) {
   }
   if (axis !== 'x') return;
   // 夹在两页之间，滑不出界
-  const x = Math.max(-800, Math.min(0, baseX + dx));
+  const x = Math.max(-800 * (ORDER.length - 1), Math.min(0, baseX + dx));
   deck.style.webkitTransform = deck.style.transform = 'translateX(' + x + 'px)';
 }, false);
 
@@ -673,16 +945,192 @@ function endDrag(e) {
   if (axis !== 'x') return;
   const dx = e.changedTouches[0].clientX - startX;
   // 拖够了就翻页，不够就吸回原处——无论如何都停在整页上
-  pinTo(Math.abs(dx) >= SNAP ? (dx < 0 ? 'claude' : 'codex') : view);
+  pinTo(Math.abs(dx) >= SNAP ? step(dx < 0 ? 1 : -1) : view);
 }
 document.addEventListener('touchend', endDrag, false);
 document.addEventListener('touchcancel', endDrag, false);
 
 // 退路：万一只送达 click 不送达 touch，点左右半屏也能切
+function step(d) {
+  const i = Math.max(0, Math.min(ORDER.length - 1, ORDER.indexOf(view) + d));
+  return ORDER[i];
+}
+
 document.addEventListener('click', function (e) {
   if (Date.now() - lastTouch < 700) return;      // 滑动尾部会补一个 click，滤掉
   if (e.target.className.indexOf && e.target.className.indexOf('go') >= 0) return;
-  pinTo(e.clientX < 400 ? 'codex' : 'claude');
+  if (view === 'mac') return;                    // 控制页满屏是按钮，点空白不翻页
+  pinTo(step(e.clientX < 400 ? -1 : 1));
+}, false);
+
+// ── Mac 状态 ──
+function gb(bytes) {
+  const g = bytes / 1073741824;
+  return g >= 1000 ? (g / 1024).toFixed(1) + ' TB' : (g >= 100 ? Math.round(g) : g.toFixed(1)) + ' GB';
+}
+
+function rate(bps) {
+  if (bps >= 1048576) return (bps / 1048576).toFixed(1) + ' MB/s';
+  if (bps >= 1024) return Math.round(bps / 1024) + ' KB/s';
+  return Math.round(bps) + ' B/s';
+}
+
+function uptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? d + 'd ' + h + 'h' : h ? h + 'h ' + m + 'm' : m + 'm';
+}
+
+// 网速轴的上限取整到 1/2/5×10ⁿ，刻度读起来是干净的数
+function niceMax(v) {
+  if (!(v > 0)) return 1024;
+  const e = Math.pow(10, Math.floor(Math.log(v) / Math.LN10)), f = v / e;
+  return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * e;
+}
+
+const SURFACE = '#111720', GRID = 'rgba(255,255,255,.09)', HISTORY = 120;
+const BLUE = '#3987e5', ORANGE = '#d95926';   // dataviz 深色板前两槽，已对 #111720 验过
+
+// 一条线 + 面积底 + 末端点。最新的点贴右边，历史不够长时从右往左长；null 处断开
+function series(vals, w, h, max, color, area) {
+  const step = w / (HISTORY - 1), off = HISTORY - vals.length;
+  let line = '', fill = '', seg = [], last = null;
+  function flush() {
+    if (seg.length > 1) {
+      line += 'M' + seg.join('L');
+      if (area) fill += 'M' + seg[0].split(',')[0] + ',' + h + 'L' + seg.join('L') + 'L' + seg[seg.length - 1].split(',')[0] + ',' + h + 'Z';
+    }
+    seg = [];
+  }
+  vals.forEach(function (v, i) {
+    if (v == null) { flush(); return; }
+    const x = ((off + i) * step).toFixed(1);
+    const y = (h - 2 - Math.min(v / max, 1) * (h - 6)).toFixed(1);   // 上下各留出端点的半径
+    seg.push(x + ',' + y);
+    last = [x, y];
+  });
+  flush();
+  let out = '';
+  if (fill) out += '<path d="' + fill + '" fill="' + color + '" fill-opacity=".12"/>';
+  if (line) out += '<path d="' + line + '" fill="none" stroke="' + color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+  if (last) out += '<circle cx="' + last[0] + '" cy="' + last[1] + '" r="4" fill="' + color + '" stroke="' + SURFACE + '" stroke-width="2"/>';
+  return out;
+}
+
+function grid(w, h, rows) {
+  let g = '';
+  rows.forEach(function (f) {
+    const y = (h - 2 - f * (h - 6)).toFixed(1);
+    g += '<line x1="0" x2="' + w + '" y1="' + y + '" y2="' + y + '" stroke="' + GRID + '" stroke-width="1"/>';
+  });
+  return g;
+}
+
+// 百分比图：固定 0–100，网格在 0/50/100，三张卡片同一把尺子，能横着比
+function pctChart(id, vals) {
+  const svg = $(id), w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+  svg.innerHTML = grid(w, h, [0, .5, 1]) + series(vals || [], w, h, 100, BLUE, true);
+}
+
+function netChart(rx, tx) {
+  const svg = $('chNet'), w = +svg.getAttribute('width'), h = +svg.getAttribute('height');
+  const peak = Math.max.apply(null, (rx || []).concat(tx || []).filter(v => v != null).concat([0]));
+  const max = niceMax(peak);
+  // 只标顶部那条刻度：底下是 0 不言自明
+  svg.innerHTML = grid(w, h, [0, .5, 1]) +
+    '<text x="0" y="13" fill="rgba(255,255,255,.45)" font-size="12">' + rate(max) + '</text>' +
+    series(rx || [], w, h, max, BLUE, true) + series(tx || [], w, h, max, ORANGE, false);
+}
+
+function pctVal(id, v, extra) {
+  $(id).innerHTML = v == null ? '—'
+    : Math.round(v) + '<i>%</i>' + (extra ? '<small>' + extra + '</small>' : '');
+}
+
+let sysKey = null;
+function renderSys(x) {
+  if (!x) return;
+  if (x.model) $('sysModel').textContent = x.model.replace(/^Apple /, '');
+  const sub = [];
+  if (x.disk) sub.push('Disk ' + x.disk.percent + '%, ' + gb(x.disk.total - x.disk.used) + ' free');
+  const b = x.battery;
+  sub.push(b ? 'Battery ' + b.percent + '%' + (b.charging ? ', charging' : b.ac ? ', AC' : '') : 'AC power');
+  if (x.uptime != null) sub.push('Up ' + uptime(x.uptime));
+  $('sysSub').textContent = sub.join('  ·  ');
+
+  const h = x.history || {};
+  pctVal('sysCpu', x.cpu, x.cores ? 'load ' + x.load : '');
+  pctVal('sysGpu', x.gpu && x.gpu.percent, x.gpu && x.gpu.mem ? gb(x.gpu.mem) : '');
+  pctVal('sysMem', x.mem && x.mem.percent, x.mem ? gb(x.mem.used) + ' / ' + gb(x.mem.total) : '');
+  pctChart('chCpu', h.cpu);
+  pctChart('chGpu', h.gpu);
+  pctChart('chMem', h.mem);
+  $('sysRx').textContent = x.net ? '↓ ' + rate(x.net.rx) : '↓ —';
+  $('sysTx').textContent = x.net ? '↑ ' + rate(x.net.tx) : '↑ —';
+  netChart(h.rx, h.tx);
+
+  // 名字变了才重建 DOM，数字和条长只改属性——两秒一次，别整块重绘
+  const top = x.top || [], box = $('sysTop');
+  const key = top.map(t => t.name).join('~');
+  if (key !== sysKey) {
+    sysKey = key;
+    box.innerHTML = top.map(t => '<div class="p"><div class="nm">' + esc(t.name) +
+      '</div><div class="bar"><i></i></div><div class="pc"></div></div>').join('');
+  }
+  const bars = box.querySelectorAll('.bar i'), pcs = box.querySelectorAll('.pc');
+  top.forEach(function (t, i) {
+    // ps 的百分比按单核计，多线程进程会过 100；条按一个核封顶，数字照实写
+    if (bars[i]) bars[i].style.width = Math.min(t.cpu, 100) + '%';
+    if (pcs[i]) pcs[i].textContent = t.cpu + '%';
+  });
+}
+
+// ── Mac 控制 ──
+function renderMac(m) {
+  const b = $('awake'), on = !!(m && m.awake);
+  b.classList.toggle('on', on);                  // 只动 on，别冲掉 hit/bad
+}
+
+let acting = false;
+function act(btn) {
+  if (acting) return;                            // 一次一个，避免连点叠出多个请求
+  acting = true;
+  pinAt = Date.now();                            // 正在用就别被自动跟随拽走
+  const msg = $('ctlMsg');
+  btn.classList.add('hit');
+  const xhr = new XMLHttpRequest();
+  xhr.open('POST', '/api/action?name=' + encodeURIComponent(btn.getAttribute('data-a')), true);
+  xhr.setRequestHeader('X-LX04-Action', '1');    // 服务端靠它挡掉跨站请求
+  xhr.timeout = 8000;
+  function done(ok, text) {
+    acting = false;
+    btn.classList.remove('hit');
+    btn.classList.toggle('bad', !ok);
+    msg.textContent = text;
+    clearTimeout(window.msgT);
+    window.msgT = setTimeout(function () {
+      msg.textContent = '';
+      btn.classList.remove('bad');
+    }, 3000);
+  }
+  xhr.onload = function () {
+    try {
+      const r = JSON.parse(xhr.responseText);
+      renderMac(r.mac);
+      // 开关类的消息自带名字（「防休眠已开启」），只给笼统的「已执行」补上是谁
+      const nm = btn.querySelector('.nm').textContent;
+      done(r.ok, r.message.indexOf(nm) === 0 ? r.message : nm + ' · ' + r.message);
+    } catch (e) {
+      done(false, xhr.status === 403 ? '这台设备没有控制权限' : '执行失败');
+    }
+  };
+  xhr.onerror = xhr.ontimeout = function () { done(false, '连不上 Mac'); };
+  xhr.send();
+}
+
+$('ctl').addEventListener('click', function (e) {
+  let t = e.target;
+  while (t && t !== this && !t.getAttribute('data-a')) t = t.parentNode;
+  if (t && t !== this) act(t);
 }, false);
 
 // ── 背景轮换 ──
@@ -729,8 +1177,102 @@ setInterval(function () {
   for (const k in PAGES) advance(PAGES[k], SHOTS[k]);
 }, SHOT_MS);
 
-// ?page=codex|claude 固定某一页：触摸万一不可用时的退路，也方便对着看
-const forced = location.search.match(/[?&]page=(codex|claude)/);
+// ── 相册 ──
+// 列表十分钟拉一次；只在相册页可见时换图，翻走了就停在原处，下次回来接着放
+const SLIDE_MS = 12000;
+const album = { trips: [], slides: [], i: -1, top: 0, busy: false, shownAt: 0 };
+
+// 竖图两两并排成一屏：同一次旅行里相邻的两张竖图凑一对，落单的居中
+function toSlides(list) {
+  const out = [];
+  let lone = null;
+  list.forEach(function (p) {
+    if (!p.portrait) { out.push([p]); return; }
+    if (lone && lone.trip === p.trip) { out.push([lone, p]); lone = null; return; }
+    if (lone) out.push([lone]);
+    lone = p;
+  });
+  if (lone) out.push([lone]);
+  return out;
+}
+
+function tripDate(t) {
+  const a = new Date(t.start * 1000), b = new Date(t.end * 1000);
+  const ma = MON[a.getMonth()], mb = MON[b.getMonth()];
+  if (a.getFullYear() !== b.getFullYear()) {
+    return ma + ' ' + a.getDate() + ', ' + a.getFullYear() + ' – ' + mb + ' ' + b.getDate() + ', ' + b.getFullYear();
+  }
+  const range = a.getDate() === b.getDate() && ma === mb ? ma + ' ' + a.getDate()
+    : ma === mb ? ma + ' ' + a.getDate() + ' – ' + b.getDate()
+    : ma + ' ' + a.getDate() + ' – ' + mb + ' ' + b.getDate();
+  return range + ', ' + a.getFullYear();
+}
+
+function loadAlbum() {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', '/api/photos', true);
+  xhr.timeout = 10000;
+  xhr.onload = function () {
+    try {
+      const r = JSON.parse(xhr.responseText);
+      album.trips = r.trips || [];
+      album.slides = toSlides(r.photos || []);
+      if (album.i >= album.slides.length) album.i = -1;
+      $('phNone').hidden = album.slides.length > 0;
+      if (view === 'photo' && album.i < 0) nextSlide();
+    } catch (e) { /* 下一轮再试 */ }
+  };
+  xhr.send();
+}
+
+function nextSlide() {
+  if (album.busy || !album.slides.length) return;
+  album.busy = true;
+  const i = (album.i + 1) % album.slides.length, shot = album.slides[i];
+  const layer = album.top ? $('slA') : $('slB'), under = album.top ? $('slB') : $('slA');
+  // 先把图全部下完再淡入：一边下载一边显示，老 WebView 会一条一条刷出来
+  let left = shot.length, failed = false;
+  const imgs = shot.map(function (p, n) {
+    const img = new Image();
+    img.onload = img.onerror = function (e) {
+      if (e.type === 'error') failed = true;
+      if (--left) return;
+      album.busy = false;
+      album.i = i;
+      if (failed) return;                    // 这一张跳过，下一轮放后面的
+      layer.style.webkitTransition = layer.style.transition = 'none';
+      layer.style.opacity = '0';
+      layer.innerHTML = '';
+      imgs.forEach(function (im, k) {
+        // 一张竖图居中，两张左右各占一半
+        im.style.left = (shot.length === 2 ? k * 400 : (shot[0].portrait ? 200 : 0)) + 'px';
+        layer.appendChild(im);
+      });
+      layer.style.zIndex = '1';
+      under.style.zIndex = '0';
+      void layer.offsetWidth;                // 让 opacity:0 先落地
+      layer.style.webkitTransition = layer.style.transition = '';
+      layer.style.opacity = '1';
+      album.top = 1 - album.top;
+      const t = album.trips[shot[0].trip];
+      $('phPlace').textContent = t ? t.place : '';
+      $('phDate').textContent = t ? tripDate(t) : '';
+      album.shownAt = Date.now();
+    };
+    img.src = '/photos/' + p.id + '.jpg';
+    return img;
+  });
+}
+
+setInterval(function () {
+  if (view !== 'photo' || document.hidden || offline >= 3) return;
+  if (album.i < 0 || Date.now() - album.shownAt >= SLIDE_MS) nextSlide();
+}, 1000);
+loadAlbum();
+setInterval(loadAlbum, 600000);
+
+// ?page=codex|claude|sys|mac|photo 固定某一页（钉住 60 秒后照常轮播）：触摸万一不可用时的退路，也方便对着看
+const forced = location.search.match(/[?&]page=(codex|claude|sys|mac|photo)/);
 if (forced) pinTo(forced[1]);
 
 tick();

@@ -22,6 +22,10 @@ sys.path.insert(0, str(ROOT / "vendor" / "mibe"))
 import mibe  # noqa: E402
 
 import claude  # noqa: E402  bridge/claude.py，Claude 侧的采集
+import access  # noqa: E402  bridge/access.py，谁能访问
+import mac  # noqa: E402  bridge/mac.py，Mac 控制页的动作
+import system  # noqa: E402  bridge/system.py，Mac 状态页的数据
+import photos  # noqa: E402  bridge/photos.py，相册页的旅行照片
 
 DISPLAY = ROOT / "display"
 # 页面要的静态资源就这几类，多的不开
@@ -93,13 +97,18 @@ def _usage(limits):
                 "window_minutes": window.get("window_minutes"),
                 "resets_at": window.get("resets_at"),
             }
+    # 同一会话里会混进别的 limit_id（实测 "premium"）：窗口全是 null、balance 是 "0"。
+    # 只剩 credits 的结果不能算有效额度，否则 `_usage(...) or agent["usage"]`
+    # 会拿它把真实的 5h/周窗口顶掉，屏幕上两个额度一起变成「暂不可用」。
+    if not out:
+        return None
     credits = limits.get("credits")
     if isinstance(credits, dict) and credits.get("balance"):
         try:
             out["credits"] = round(float(credits["balance"]), 2)
         except (TypeError, ValueError):
             pass
-    return out or None
+    return out
 
 
 def _approval_prompt(payload):
@@ -173,7 +182,7 @@ def _seed_codex(agent, limit=3):
 
                 # 关心的行占比极低，先用子串挡掉 99%，再解析。
                 # 111MB 全扫 0.16 秒 —— 累计耗时必须全量，只读文件尾会漏掉大半。
-                total_ms, state, limits = 0, "Done", None
+                total_ms, state, usage = 0, "Done", None
                 for line in fh:
                     if '"duration_ms"' in line:
                         payload = _payload(line)
@@ -186,7 +195,8 @@ def _seed_codex(agent, limit=3):
                     elif '"rate_limits"' in line:
                         payload = _payload(line)
                         if payload.get("type") == "token_count":
-                            limits = payload.get("rate_limits")
+                            # 只认带窗口的那条，尾部的 premium 记录不能盖掉它
+                            usage = _usage(payload.get("rate_limits")) or usage
         except OSError:
             continue
 
@@ -200,8 +210,8 @@ def _seed_codex(agent, limit=3):
         }
         if agent["current"] is None:
             agent["current"] = project
-        if agent["usage"] is None and limits:
-            agent["usage"] = _usage(limits)
+        if agent["usage"] is None and usage:
+            agent["usage"] = usage
 
 
 def observe(event, path, notifier):
@@ -378,6 +388,9 @@ def snapshot():
         "agents": views,
         # None = 这次启动没有播报能力，页面据此隐藏开关
         "speaking": _speak_on if _can_speak else None,
+        "mac": mac.state(),
+        # 锁外采集：它自带缓存和锁，最慢一次几十毫秒，不该拖住 AGENTS 那把锁
+        "system": system.read(),
     }
 
 
@@ -441,8 +454,40 @@ class Handler(BaseHTTPRequestHandler):
     # 行为是未定义的——实测会把某个分片当成整个文件存住，之后每次都报
     # MEDIA_ERR_SRC_NOT_SUPPORTED，看起来像视频文件坏了，其实文件好好的。
     protocol_version = "HTTP/1.1"
+    def _permitted(self, write=False):
+        """所有请求的门卫。不通过就 403，并且不区分原因，免得帮人探测。"""
+        ok = access.allowed(
+            self.client_address[0], self.headers.get("Host"),
+            self.connection.getsockname()[0],
+        )
+        if ok and write:
+            ok = self.headers.get(access.HEADER) == "1"
+        if not ok:
+            self.send_error(403)
+        return ok
+
     def do_GET(self):
-        if self.path.startswith("/api/status"):
+        if not self._permitted():
+            return
+        path = urlparse(self.path).path
+        if path.startswith("/icons/") and path.endswith(".png"):
+            body = mac.icon(path[len("/icons/"):-len(".png")])
+            if body is None:
+                self.send_error(404)
+            else:
+                self._send(body, "image/png", cache="max-age=86400")
+        elif path.startswith("/photos/") and path.endswith(".jpg"):
+            # 照片不常变，缓存一天：一圈一百多张，别每轮都重传
+            body = photos.image(path[len("/photos/"):-len(".jpg")])
+            if body is None:
+                self.send_error(404)
+            else:
+                self._send(body, "image/jpeg", cache="max-age=86400")
+        elif path == "/api/photos":
+            # 单独一个接口，不进 /api/status：列表十分钟才变，没必要两秒一传
+            body = json.dumps(photos.read(), ensure_ascii=False).encode()
+            self._send(body, "application/json; charset=utf-8")
+        elif self.path.startswith("/api/status"):
             body = json.dumps(snapshot(), ensure_ascii=False).encode()
             self._send(body, "application/json; charset=utf-8")
         elif urlparse(self.path).path in ("/", "/index.html"):
@@ -510,7 +555,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(chunk)
 
     def do_POST(self):
+        if not self._permitted(write=True):
+            return
         url = urlparse(self.path)
+        if url.path == "/api/action":
+            self._action(parse_qs(url.query).get("name", [""])[0])
+            return
         if url.path != "/api/speak":
             self.send_error(404)
             return
@@ -522,6 +572,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_error(409, "no speaker this run")
             return
         body = json.dumps({"speaking": result}).encode()
+        self._send(body, "application/json; charset=utf-8")
+
+    def _action(self, name):
+        """Mac 控制页的按钮。权限已在 do_POST 入口查过。"""
+        ok, message = mac.run_action(name)
+        body = json.dumps({"ok": ok, "message": message, "mac": mac.state()},
+                          ensure_ascii=False).encode()
         self._send(body, "application/json; charset=utf-8")
 
     def _send(self, body, ctype, cache="no-store", ranges=False, etag=None):

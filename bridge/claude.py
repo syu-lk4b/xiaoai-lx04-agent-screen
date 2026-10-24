@@ -12,11 +12,14 @@ import os
 import re
 import struct
 import subprocess
+import sys
 import time
 from datetime import datetime
 from pathlib import Path
 
 PROJECTS = Path.home() / ".claude" / "projects"
+# claude-hud 状态栏插件在 Claude Code 运行时定期拉 /usage 并落盘，比 Desktop 缓存新得多
+HUD_CACHE = Path.home() / ".claude" / "plugins" / "claude-hud" / ".usage-cache.json"
 CACHE = Path.home() / "Library" / "Application Support" / "Claude" / "Cache" / "Cache_Data"
 TAIL = 131072  # 只读尾部 128KB
 ZSTD = next(
@@ -231,12 +234,52 @@ def _read_path(path):
     return _parse(text) if text else None
 
 
+def _hud_window(used, reset_at, minutes):
+    if used is None:
+        return None
+    resets = None
+    if reset_at:
+        try:
+            # JS 的 toISOString 带 Z，3.10 的 fromisoformat 不认，换成 +00:00
+            resets = datetime.fromisoformat(str(reset_at).replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            pass
+    return {"remaining": round(100 - used), "window_minutes": minutes, "resets_at": resets}
+
+
+def read_hud_usage(path=HUD_CACHE, now=None):
+    """claude-hud 的额度缓存。读不到、拉取失败（字段为 null）或陈旧都返回 None。"""
+    now = time.time() if now is None else now
+    try:
+        cache = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as exc:
+        print(f"[claude] 读取 claude-hud 额度缓存失败：{exc}", file=sys.stderr)
+        return None
+    data = cache.get("data") if isinstance(cache, dict) else None
+    stamp = cache.get("timestamp") if isinstance(cache, dict) else None
+    if not isinstance(data, dict) or not isinstance(stamp, (int, float)):
+        return None
+    out = {
+        "primary": _hud_window(data.get("fiveHour"), data.get("fiveHourResetAt"), 300),
+        "secondary": _hud_window(data.get("sevenDay"), data.get("sevenDayResetAt"), 10080),
+    }
+    if not (out["primary"] or out["secondary"]):
+        return None
+    return _fresh(out, stamp / 1000, now)
+
+
 def read_usage():
     """订阅额度。形状和 bridge/run.py 的 _usage() 一致，页面不用分支。
 
-    来源是 Claude Desktop 的磁盘缓存，所以它没在跑就会陈旧——
+    优先 claude-hud 落盘的缓存（Claude Code 在跑就会刷新）；
+    其次 Claude Desktop 的磁盘缓存，它没在跑就会陈旧——
     宁可返回 None 让页面显示「—」，也不显示过期的数字。
     """
+    hud = read_hud_usage()
+    if hud:
+        return hud
     now = time.time()
 
     # 上次命中的条目还在且没变，直接用缓存（一次 stat 的事）

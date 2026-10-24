@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<!--
+  Mac 状态页（night.jpg）和控制页（dusk.jpg）的背景生成器。
+  程序生成而不是找图：没有版权问题，改参数就能重出，结果可复现（固定种子）。
+
+  和 Codex 的雪山、Claude 的峡谷同一路数——风景，只是换了时间：
+  夜空极光配冷调的状态页，黄昏配暖调的控制页。
+  画面整体压暗、主体放在中下部，上面要叠卡片和图标。
+
+  重新生成（scripts/ 下运行）：
+    ./render-backgrounds.sh
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}canvas{display:block}</style>
+</head>
+<body>
+<canvas id="c" width="800" height="480"></canvas>
+<script>
+const W = 800, H = 480;
+const scene = (location.hash || '#night').slice(1);
+
+// 固定种子的伪随机：每次渲染同一张图
+function rng(seed) {
+  return function () { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+}
+
+// 一维分形噪声，画山脊线用。sharp=true 时用「脊状噪声」(1-|n|)：
+// 峰顶尖、谷底圆，像真山；false 时是正弦叠加，起伏平缓，像丘陵
+function ridgeLine(rand, base, amp, freq, octaves, sharp) {
+  const pts = [], phase = [], n = octaves;
+  for (let o = 0; o < n; o++) phase.push([rand() * 1000, rand() * 1000]);
+  for (let x = 0; x <= W; x += 2) {
+    let y = 0, a = amp, f = freq;
+    for (let o = 0; o < n; o++) {
+      const v = Math.sin(x * f + phase[o][0]) * 0.6 + Math.sin(x * f * 1.7 + phase[o][1]) * 0.4;
+      y += sharp ? -a * (1 - Math.abs(v)) * 1.6 : a * v;
+      a *= sharp ? 0.45 : 0.5; f *= 2.1;
+    }
+    pts.push([x, base + y]);
+  }
+  return pts;
+}
+
+function mix(c1, c2, t) {
+  return 'rgb(' + c1.map((v, i) => Math.round(v + (c2[i] - v) * t)).join(',') + ')';
+}
+
+function fillRidge(ctx, pts, color, glow, shade) {
+  ctx.beginPath();
+  ctx.moveTo(0, H);
+  pts.forEach(p => ctx.lineTo(p[0], p[1]));
+  ctx.lineTo(W, H);
+  ctx.closePath();
+  // 每层自上而下由亮转暗：山顶受天光、山脚埋在阴影里，一层就有了体积
+  const top = Math.min.apply(null, pts.map(p => p[1]));
+  const g = ctx.createLinearGradient(0, top, 0, Math.min(H, top + 150));
+  g.addColorStop(0, color);
+  g.addColorStop(1, shade || color);
+  ctx.fillStyle = g;
+  ctx.fill();
+  if (glow) {  // 山脊受天光的一道细亮边，让层次读得出来
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]));
+    ctx.strokeStyle = glow;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+// 层与层之间一道低雾：远近分开，画面有纵深
+function mist(ctx, y, h, color) {
+  const g = ctx.createLinearGradient(0, y - h, 0, y + h);
+  g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, color); g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g; ctx.fillRect(0, y - h, W, h * 2);
+}
+
+function grain(ctx, rand, strength) {
+  // 一层极细颗粒：纯渐变在 8 位屏上会出色带，颗粒把它打散
+  const img = ctx.getImageData(0, 0, W, H), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const n = (rand() - 0.5) * strength;
+    d[i] += n; d[i + 1] += n; d[i + 2] += n;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+const SCENES = {
+  night: function (ctx, rand) {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#05080f');
+    sky.addColorStop(0.55, '#0b1424');
+    sky.addColorStop(1, '#122036');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+    // 星：越往上越密，个别亮一点
+    for (let i = 0; i < 420; i++) {
+      const y = Math.pow(rand(), 1.6) * H * 0.7, x = rand() * W;
+      const r = rand() < 0.04 ? 1.1 : 0.55;
+      ctx.fillStyle = 'rgba(220,232,255,' + (0.25 + rand() * 0.55).toFixed(2) + ')';
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 极光：几条斜向的柔光带，青绿为主，边缘带一点紫
+    ctx.save();
+    ctx.filter = 'blur(28px)';
+    ctx.globalCompositeOperation = 'screen';
+    [[560, 120, 'rgba(56,214,170,.30)', -0.35, 420, 70],
+     [470, 170, 'rgba(56,190,214,.22)', -0.25, 380, 50],
+     [650, 90, 'rgba(140,110,230,.18)', -0.45, 300, 60]].forEach(function (b) {
+      ctx.save();
+      ctx.translate(b[0], b[1]); ctx.rotate(b[3]);
+      const g = ctx.createLinearGradient(0, -b[5], 0, b[5]);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, b[2]); g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.fillRect(-b[4] / 2, -b[5], b[4], b[5] * 2);
+      ctx.restore();
+    });
+    ctx.restore();
+
+    // 山：远山偏亮偏蓝（空气透视），近山接近纯黑
+    const haze = [58, 80, 112], near = [5, 8, 12];
+    [[340, 46, 0.005, 6, 0.0, 352], [370, 38, 0.007, 6, 0.33, 386], [404, 30, 0.010, 5, 0.66, 420],
+     [448, 20, 0.014, 5, 1.0, 0]].forEach(function (l) {
+      const c = mix(haze, near, l[4]), shade = mix(haze, near, Math.min(1, l[4] + 0.4));
+      fillRidge(ctx, ridgeLine(rand, l[0], l[1], l[2], l[3], true), c,
+                l[4] < 0.5 ? 'rgba(190,220,245,.16)' : null, shade);
+      if (l[5]) mist(ctx, l[5], 26, 'rgba(70,100,140,.10)');
+    });
+    grain(ctx, rand, 6);
+  },
+
+  dusk: function (ctx, rand) {
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, '#0d0b1c');
+    sky.addColorStop(0.42, '#2a1c3c');
+    sky.addColorStop(0.68, '#5a3048');
+    sky.addColorStop(0.86, '#8a4a3e');
+    sky.addColorStop(1, '#3a2228');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, W, H);
+
+    // 落日余晖：地平线右侧一团暖光
+    const sun = ctx.createRadialGradient(600, 360, 0, 600, 360, 360);
+    sun.addColorStop(0, 'rgba(255,150,90,.42)');
+    sun.addColorStop(0.35, 'rgba(230,110,90,.16)');
+    sun.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sun; ctx.fillRect(0, 0, W, H);
+
+    // 几颗早出的星，只在顶部
+    for (let i = 0; i < 60; i++) {
+      ctx.fillStyle = 'rgba(255,236,230,' + (0.15 + rand() * 0.35).toFixed(2) + ')';
+      ctx.beginPath(); ctx.arc(rand() * W, Math.pow(rand(), 2) * H * 0.3, 0.55, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // 薄云：几条拉长的柔光，被夕阳从下面照亮
+    ctx.save();
+    ctx.filter = 'blur(14px)';
+    [[180, 170, 260, 10, 'rgba(240,150,140,.16)'], [430, 210, 320, 12, 'rgba(250,170,130,.18)'],
+     [690, 150, 220, 8, 'rgba(220,140,160,.12)']].forEach(function (c) {
+      ctx.fillStyle = c[4];
+      ctx.beginPath(); ctx.ellipse(c[0], c[1], c[2] / 2, c[3], 0, 0, Math.PI * 2); ctx.fill();
+    });
+    ctx.restore();
+
+    // 起伏的丘陵：比夜景平缓，远处带紫，近处是暖黑
+    const haze = [112, 66, 90], near = [12, 8, 12];
+    [[318, 30, 0.005, 4, 0.0, 340], [352, 26, 0.007, 4, 0.33, 376], [392, 22, 0.009, 3, 0.66, 412],
+     [436, 18, 0.012, 3, 1.0, 0]].forEach(function (l) {
+      const c = mix(haze, near, l[4]), shade = mix(haze, near, Math.min(1, l[4] + 0.4));
+      fillRidge(ctx, ridgeLine(rand, l[0], l[1], l[2], l[3], false), c,
+                l[4] < 0.5 ? 'rgba(255,180,150,.16)' : null, shade);
+      if (l[5]) mist(ctx, l[5], 24, 'rgba(200,110,110,.08)');
+    });
+    grain(ctx, rand, 6);
+  },
+};
+
+const ctx = document.getElementById('c').getContext('2d');
+SCENES[scene](ctx, rng(scene === 'night' ? 20261023 : 19821023));
+</script>
+</body>
+</html>
