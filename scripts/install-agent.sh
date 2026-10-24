@@ -58,6 +58,7 @@ cat > "$BRIDGE_PLIST" <<EOF
     <array>
         <string>/usr/bin/python3</string>
         <string>$ROOT/scripts/adb-bridge.py</string>
+        <string>--auto-open</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
@@ -74,7 +75,7 @@ EOF
 plutil -lint "$BRIDGE_PLIST" >/dev/null
 launchctl unload "$BRIDGE_PLIST" 2>/dev/null || true
 launchctl load "$BRIDGE_PLIST"
-/usr/bin/python3 "$ROOT/scripts/adb-bridge.py" --open || true
+/usr/bin/python3 "$ROOT/scripts/adb-bridge.py" --once --open || true
 
 sleep 2
 if launchctl list | grep -q "$LABEL" && launchctl list | grep -q "$BRIDGE_LABEL"; then

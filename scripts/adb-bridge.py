@@ -18,12 +18,17 @@ STATUS_PORT = 8477
 INTERVAL = 10
 PRODUCT = "mi_lx04"
 URL = f"http://127.0.0.1:{STATUS_PORT}/"
+BROWSER_PACKAGE = os.environ.get("LX04_BROWSER_PACKAGE", "mark.via")
 STATE = Path.home() / "Library" / "Application Support" / "lx04-status" / "adb-endpoint.json"
 PID = "/data/local/tmp/lx04-status-proxy.pid"
 TARGET = "/data/local/tmp/lx04-status-proxy.target"
 LOG = "/data/local/tmp/lx04-status-proxy.log"
 TOYBOX = "/system/bin/toybox"
-ADB = next((p for p in ("/opt/homebrew/bin/adb", shutil.which("adb")) if p and Path(p).exists()), None)
+# 夜里熄屏的时段（Mac 本地时间），在 adb-endpoint.json 里用 "sleep": "23:30-07:00" 改，"off" 关掉。
+# 音箱自己的熄屏时间是「永不」，不靠我们关它就整夜亮着
+SLEEP_DEFAULT = "23:00-07:00"
+KEY_SLEEP, KEY_WAKEUP = "223", "224"
+ADB = next((p for p in (str(Path(__file__).resolve().parents[1] / ".local-tools/platform-tools/adb"), "/opt/homebrew/bin/adb", shutil.which("adb")) if p and Path(p).exists()), None)
 
 
 def log(message):
@@ -91,6 +96,47 @@ def mac_ip():
         return None
 
 
+def sleep_window():
+    """配置里的熄屏时段 -> (开始分钟, 结束分钟)；关掉或写错返回 None。"""
+    try:
+        text = json.loads(STATE.read_text()).get("sleep", SLEEP_DEFAULT)
+    except (OSError, ValueError, AttributeError, json.JSONDecodeError):
+        text = SLEEP_DEFAULT
+    return parse_window(text)
+
+
+def parse_window(text):
+    try:
+        start, end = (part.strip() for part in str(text).split("-"))
+        minutes = []
+        for part in (start, end):
+            hh, mm = part.split(":")
+            if not (0 <= int(hh) < 24 and 0 <= int(mm) < 60):
+                return None
+            minutes.append(int(hh) * 60 + int(mm))
+    except ValueError:
+        return None  # "off" 和写错的都走这里
+    return None if minutes[0] == minutes[1] else tuple(minutes)
+
+
+def in_window(window, minute):
+    start, end = window
+    # 23:00-07:00 这种跨午夜的时段，落在两段里的任一段都算
+    return start <= minute < end if start < end else minute >= start or minute < end
+
+
+def sleep_step(window, minute, boot, slept):
+    """该不该熄屏/亮屏 -> (动作, 新的 slept)。动作是 None、"sleep" 或 "wake"。
+
+    slept 记的是「这一夜在哪次开机里关过屏」：同一次开机只关一次，
+    夜里有人点亮了屏幕就让它亮着，不跟人抢；音箱半夜重启（自己亮屏）则再关一次。
+    只有我们关过屏，早上才负责叫醒——白天启动不去碰屏幕。
+    """
+    if window and in_window(window, minute):
+        return ("sleep", boot) if slept != boot else (None, slept)
+    return ("wake", None) if slept is not None else (None, None)
+
+
 def local_network():
     host = mac_ip()
     return ipaddress.ip_network(f"{host}/24", strict=False) if host else None
@@ -120,6 +166,12 @@ def scan_lx04():
 
 
 def save_endpoint(endpoint):
+    try:
+        host, port = endpoint.rsplit(":", 1)
+        if ipaddress.ip_address(host).version != 4 or port != str(ADB_PORT):
+            return
+    except ValueError:
+        return  # USB serial numbers must not replace a saved Wi-Fi endpoint.
     STATE.parent.mkdir(parents=True, exist_ok=True)
     try:
         config = json.loads(STATE.read_text())
@@ -133,11 +185,22 @@ def save_endpoint(endpoint):
 
 
 def proxy_ready(serial, target):
-    listening = run("-s", serial, "shell", "ss", "-ltn")
-    # ADB 超时只表示状态未知，不能据此结束正常代理。
-    if listening is None or listening.returncode != 0:
+    """USB reverse, or a loopback-only netcat proxy on old wireless adbd."""
+    if ":" not in serial:
+        result = run("-s", serial, "reverse", "--list")
+        if result is None:
+            return None
+        if result.returncode == 0 and any(
+                line.split()[-2:] == [f"tcp:{STATUS_PORT}", f"tcp:{STATUS_PORT}"]
+                for line in result.stdout.splitlines()):
+            return True
+    result = run("-s", serial, "shell", "cat", "/proc/net/tcp")
+    if result is None or result.returncode != 0:
         return None
-    if f"127.0.0.1:{STATUS_PORT} " not in listening.stdout:
+    address = f"0100007F:{STATUS_PORT:04X}"
+    listening = any(len(fields) > 3 and fields[1] == address and fields[3] == "0A"
+                    for fields in (line.split() for line in result.stdout.splitlines()))
+    if not listening:
         return False
     configured = run("-s", serial, "shell", "cat", TARGET)
     if configured is None:
@@ -146,6 +209,10 @@ def proxy_ready(serial, target):
 
 
 def install_proxy(serial, target):
+    if ":" not in serial:
+        result = run("-s", serial, "reverse", f"tcp:{STATUS_PORT}", f"tcp:{STATUS_PORT}")
+        if result and result.returncode == 0 and proxy_ready(serial, target) is True:
+            return True
     target = str(ipaddress.IPv4Address(target))
     prefix = f"{TOYBOX} nc -s 127.0.0.1 -p {STATUS_PORT} -L {TOYBOX} nc "
     command = (
@@ -154,8 +221,7 @@ def install_proxy(serial, target):
         'actual=$(tr \'\\000\' \' \' <"/proc/$old/cmdline" 2>/dev/null); '
         f'case "$actual" in {shlex.quote(prefix)}*) '
         'kill "$old" 2>/dev/null; sleep 1 ;; esac ;; esac; '
-        # PID 文件跨重启保留，先核对进程身份；不接管未知来源的监听端口。
-        f"if ss -ltn | grep -q '127.0.0.1:{STATUS_PORT} '; then exit 1; fi; "
+        f"if grep -q '0100007F:{STATUS_PORT:04X} .* 0A ' /proc/net/tcp; then exit 1; fi; "
         f"nohup {TOYBOX} nc -s 127.0.0.1 -p {STATUS_PORT} -L "
         f"{TOYBOX} nc {target} {STATUS_PORT} >{LOG} 2>&1 & "
         f"echo $! >{PID}; echo {target} >{TARGET}"
@@ -175,12 +241,17 @@ def server_alive():
 def open_status(serial):
     # Via 把每次 ACTION_VIEW 都当成新页签，浏览器标准的复用 extra 在真机上无效。
     # MAIN 先回到原页签；搜索键选中地址栏，在当前页里输入固定地址。
+    # Via 对和当前页相同的 URL 回车不会重新加载，改了页面也看不到——
+    # 带一个每次不同的查询参数强制加载，页面不认识它，会忽略。
+    # 只用一个参数：input text 过设备上的 sh，& 会被当成后台符把命令截断。
+    url = f"{URL}?t={int(time.time())}"
     commands = [
         ("am", "start", "-W", "-a", "android.intent.action.MAIN", "-c",
-         "android.intent.category.LAUNCHER", "-n", "mark.via.gp/mark.via.Shell"),
+         "android.intent.category.LAUNCHER", "-n", f"{BROWSER_PACKAGE}/mark.via.Shell"),
         ("input", "keyevent", "84"),
-        ("input", "text", URL),
+        ("input", "text", url),
         ("input", "keyevent", "66"),
+        ("input", "swipe", "735", "370", "735", "130", "500"),
     ]
     for command in commands:
         result = run("-s", serial, "shell", *command)
@@ -188,12 +259,19 @@ def open_status(serial):
             return False
         if command == ("input", "keyevent", "84"):
             time.sleep(0.3)
+        elif command == ("input", "keyevent", "66"):
+            time.sleep(1)
     return True
+
+
+def set_screen(serial, on):
+    result = run("-s", serial, "shell", "input", "keyevent", KEY_WAKEUP if on else KEY_SLEEP)
+    return result is not None and result.returncode == 0
 
 
 def observe_device(serial, previous):
     result = run("-s", serial, "shell",
-                 "cat /proc/sys/kernel/random/boot_id; pidof mark.via.gp")
+                 f"cat /proc/sys/kernel/random/boot_id; pidof {BROWSER_PACKAGE}")
     if result is None:
         return previous
     lines = result.stdout.strip().splitlines()
@@ -259,6 +337,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--once", action="store_true", help="只检查和修复一次")
     parser.add_argument("--open", action="store_true", help="检查完成后打开状态屏")
+    parser.add_argument("--auto-open", action="store_true", help="音箱重启或浏览器未运行时打开状态屏")
     parser.add_argument("--self-test", action="store_true", help="运行不连接设备的自检")
     args = parser.parse_args()
     if args.self_test:
@@ -269,10 +348,34 @@ def main():
         return 1
 
     device_state = None
+    slept = None
     while True:
         serial = ensure()
+        night = False
         if serial:
+            previous_state = device_state
             device_state = observe_device(serial, device_state)
+            if args.auto_open and device_state:
+                now = time.localtime()
+                minute = now.tm_hour * 60 + now.tm_min
+                window = sleep_window()
+                night = bool(window and in_window(window, minute))
+                action, after = sleep_step(window, minute, device_state[0], slept)
+                if action == "sleep" and set_screen(serial, False):
+                    slept = after
+                    log("到了熄屏时段，关闭屏幕")
+                elif action == "wake" and set_screen(serial, True):
+                    slept = after
+                    log("熄屏时段结束，点亮屏幕")
+                    if server_alive() and open_status(serial):
+                        log(f"已打开 {URL}")
+            # 熄屏时段里不自动开页面：输入按键会把屏幕叫醒
+            if (args.auto_open and not night and device_state and server_alive()
+                    and (device_state[1] == "未运行"
+                         or previous_state is None
+                         or previous_state[0] != device_state[0])):
+                if open_status(serial):
+                    log(f"已自动打开 {URL}")
         if args.open and serial and server_alive() and open_status(serial):
             log(f"已打开 {URL}")
             return 0
