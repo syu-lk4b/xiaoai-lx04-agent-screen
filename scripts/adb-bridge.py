@@ -49,9 +49,27 @@ def devices(text):
             if len(line.split()) >= 2 and line.split()[1] == "device"]
 
 
+def config():
+    try:
+        value = json.loads(STATE.read_text())
+        return value if isinstance(value, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def serialno(serial):
+    result = run("-s", serial, "shell", "getprop", "ro.serialno", timeout=3)
+    return result.stdout.strip() if result and result.returncode == 0 else ""
+
+
 def is_lx04(serial):
     result = run("-s", serial, "shell", "getprop", "ro.product.device", timeout=3)
-    return bool(result and result.returncode == 0 and result.stdout.strip() == PRODUCT)
+    if not (result and result.returncode == 0 and result.stdout.strip() == PRODUCT):
+        return False
+    # 局域网里谁都能跑个假 adbd 自称 mi_lx04，而 access.py 会放行这里登记的地址（相册、Mac 控制）。
+    # 所以认过一次音箱就钉住它的硬件序列号，之后扫网段、重连、USB 都只认这一台；换音箱用 setup.sh --device 重新钉
+    pinned = config().get("serialno")
+    return not pinned or serialno(serial) == pinned
 
 
 def connected_lx04():
@@ -165,7 +183,7 @@ def scan_lx04():
     return None
 
 
-def save_endpoint(endpoint):
+def save_endpoint(endpoint, repin=False):
     try:
         host, port = endpoint.rsplit(":", 1)
         if ipaddress.ip_address(host).version != 4 or port != str(ADB_PORT):
@@ -173,14 +191,13 @@ def save_endpoint(endpoint):
     except ValueError:
         return  # USB serial numbers must not replace a saved Wi-Fi endpoint.
     STATE.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        config = json.loads(STATE.read_text())
-        if not isinstance(config, dict):
-            config = {}
-    except (OSError, ValueError):
-        config = {}
-    config["endpoint"] = endpoint
-    STATE.write_text(json.dumps(config) + "\n")
+    state = config()
+    state["endpoint"] = endpoint
+    if repin or not state.get("serialno"):
+        number = serialno(endpoint)
+        if number:
+            state["serialno"] = number
+    STATE.write_text(json.dumps(state) + "\n")
     os.chmod(STATE, 0o600)
 
 
@@ -320,8 +337,10 @@ def ensure():
             return None
         recovered = True
 
-    if recovered:
+    # 老配置里没有序列号的，第一次看到音箱就补上
+    if recovered or not config().get("serialno"):
         save_endpoint(serial)
+    if recovered:
         log(f"已连接 LX04：{serial}，目标 Mac：{target}")
         # ADB 重连不等于网页断线。页面靠自身超时轮询恢复，不发送按键或打开页签。
     return serial

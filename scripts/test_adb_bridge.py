@@ -20,6 +20,7 @@ class BridgeRecoveryTests(unittest.TestCase):
                 patch.object(bridge, "proxy_ready", side_effect=samples), \
                 patch.object(bridge, "install_proxy", return_value=True) as install, \
                 patch.object(bridge, "save_endpoint"), \
+                patch.object(bridge, "config", return_value={"serialno": "SN1"}), \
                 patch.object(bridge, "open_status") as open_page, \
                 patch.object(bridge, "run") as adb, patch.object(bridge.time, "sleep"):
             result = bridge.ensure()
@@ -115,6 +116,49 @@ class BridgeRecoveryTests(unittest.TestCase):
         command = "/system/bin/toybox nc -s 127.0.0.1 -p 8477 -L /system/bin/toybox nc 192.168.1.10 8477"
         self.assertEqual(self.check_pid_guard(command.replace(" ", "\0").encode() + b"\0"), "456")
 
+
+
+class SpeakerIdentityTests(unittest.TestCase):
+    """局域网里的假 adbd 能自称 mi_lx04，但不知道音箱的序列号，不能被登记成音箱。"""
+
+    def adb(self, product="mi_lx04", number="SN1"):
+        def fake(*args, timeout=8):
+            value = {"ro.product.device": product, "ro.serialno": number}[args[-1]]
+            return subprocess.CompletedProcess(args, 0, value + "\n", "")
+        return patch.object(bridge, "run", side_effect=fake)
+
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.state = patch.object(bridge, "STATE", Path(self.dir.name) / "adb-endpoint.json")
+        self.state.start()
+
+    def tearDown(self):
+        self.state.stop()
+        self.dir.cleanup()
+
+    def test_impostor_with_wrong_serial_is_rejected(self):
+        bridge.STATE.write_text('{"endpoint": "192.168.1.50:5555", "serialno": "SN1"}')
+        with self.adb(number="FAKE"):
+            self.assertFalse(bridge.is_lx04("192.168.1.66:5555"))
+        with self.adb(number="SN1"):
+            self.assertTrue(bridge.is_lx04("192.168.1.51:5555"))
+
+    def test_other_products_are_rejected(self):
+        with self.adb(product="sdm845"):
+            self.assertFalse(bridge.is_lx04("192.168.1.66:5555"))
+
+    def test_first_speaker_is_pinned_and_later_saves_keep_the_pin(self):
+        with self.adb(number="SN1"):
+            bridge.save_endpoint("192.168.1.50:5555")
+        with self.adb(number="SN2"):
+            bridge.save_endpoint("192.168.1.51:5555")
+        self.assertEqual(bridge.config(), {"endpoint": "192.168.1.51:5555", "serialno": "SN1"})
+
+    def test_setup_can_repin_a_replacement_speaker(self):
+        bridge.STATE.write_text('{"serialno": "SN1", "sleep": "off"}')
+        with self.adb(number="SN2"):
+            bridge.save_endpoint("192.168.1.52:5555", repin=True)
+        self.assertEqual(bridge.config(), {"serialno": "SN2", "sleep": "off", "endpoint": "192.168.1.52:5555"})
 
 
 class SleepScheduleTests(unittest.TestCase):

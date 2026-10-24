@@ -97,13 +97,13 @@ if [[ -n "${DEVICE}" ]]; then
   model="$("${ADB}" -s "${DEVICE}:5555" shell getprop ro.product.device 2>/dev/null | tr -d '\r' || true)"
   [[ "${model}" == "mi_lx04" ]] || die "${DEVICE}:5555 连不上或不是 LX04（读到「${model:-无}」）。确认音箱已刷机并打开无线 ADB"
   ok "是 LX04"
-  # 复用 adb-bridge 自己的写法：只改 endpoint，保留 sleep / mac_ip 等已有配置
+  # 复用 adb-bridge 自己的写法：改 endpoint 并钉住这台音箱的序列号，保留 sleep / mac_ip 等已有配置
   /usr/bin/python3 - "${ROOT}/scripts/adb-bridge.py" "${DEVICE}:5555" <<'PY'
 import importlib.util, sys
 spec = importlib.util.spec_from_file_location("adb_bridge", sys.argv[1])
 bridge = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(bridge)
-bridge.save_endpoint(sys.argv[2])
+bridge.save_endpoint(sys.argv[2], repin=True)  # 用户亲手指定的这台，重新钉住序列号
 PY
   ok "已记住地址"
   browser="${LX04_BROWSER_PACKAGE:-mark.via}"

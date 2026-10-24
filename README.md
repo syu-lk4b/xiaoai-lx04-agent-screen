@@ -179,7 +179,7 @@ Claude 会话日志 ┘    （每 2 秒一次快照）         （每 2 秒拉�
 - **Codex 侧**：mibe 盯 `~/.codex/sessions/` 的事件流
 - **Claude 侧**：`bridge/claude.py` 直接读 `~/.claude/projects/` 的 `.jsonl`；额度来自 claude-hud 状态栏插件的缓存，没有就退到 Claude Desktop 的本地缓存
 - **Mac 状态 / 相册**：`bridge/system.py` 读 CPU、内存、GPU、网速；`bridge/photos.py` 只读「照片」图库
-- **谁能访问**：服务监听局域网，但只放行 Mac 自己、登记过的音箱和 `LX04_CONTROL_ALLOW` 里的地址，局域网其他设备一律 403（相册是家里的照片）。想在手机上看，把手机 IP 放进环境变量 `LX04_CONTROL_ALLOW`（逗号分隔），前台运行时例如 `LX04_CONTROL_ALLOW=192.168.x.x ./scripts/start.sh`（先停掉自启的服务，否则端口冲突）
+- **谁能访问**：服务监听局域网，但只放行 Mac 自己、登记过的音箱和 `LX04_CONTROL_ALLOW` 里的地址，局域网其他设备一律 403（相册是家里的照片）。音箱按硬件序列号认，局域网里别的设备冒充不了；换了音箱重跑 `./scripts/setup.sh --device <新IP>`。想在手机上看，把手机 IP 放进环境变量 `LX04_CONTROL_ALLOW`（逗号分隔），前台运行时例如 `LX04_CONTROL_ALLOW=192.168.x.x ./scripts/start.sh`（先停掉自启的服务，否则端口冲突）
 - **页面**：一个 HTML 文件，无框架无构建。因为音箱的 WebView 是 **Chromium 61**（2017 年），`inset`、flex `gap`、`backdrop-filter`、可变字体全都不支持
 
 没有数据库，没有账号体系，重启就是重新读一遍。
