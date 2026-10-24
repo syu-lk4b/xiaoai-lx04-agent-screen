@@ -17,6 +17,10 @@ This project builds on [cenzihao1987-svg/lx04-status-display](https://github.com
 - **Mac performance monitoring**: live CPU, GPU, memory, and network throughput with charts of the last 4 minutes. Everything is collected through system interfaces that need no extra permissions, and nothing is sampled while nobody is looking
 - **Photos**: reads the trips the macOS Photos library detected on its own and shows its curated picks on the speaker — no more copying photos onto the device. Read-only; the library is never modified
 
+| Mac performance | Mac controls | Photos |
+| --- | --- | --- |
+| ![Mac Status page](docs/images/page-mac-status.jpg) | ![Mac Controls page](docs/images/page-mac-control.jpg) | ![Photos page](docs/images/page-photos.jpg) |
+
 Plus some supporting improvements:
 
 - **Photo-frame mode**: once both agents have been idle for 10 minutes, it parks on the Photos page; as soon as a task starts, it jumps back to that agent's page
