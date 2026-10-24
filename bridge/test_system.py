@@ -19,7 +19,7 @@ Pages occupied by compressor:                 605821.
 NETSTAT = """Name       Mtu   Network       Address            Ipkts Ierrs     Ibytes    Opkts Oerrs     Obytes  Coll
 lo0        16384 <Link#1>                       9000     0     500000     9000     0     500000     0
 en0        1500  <Link#16>   02:00:00:00:00:00  5337352     0 1359379884   290225     0  128123590     0
-en0        1500  fe80::108e: fe80:10::108e:c15  5337352     - 1359379884   290225     -  128123590     -
+en0        1500  fe80::1     fe80:4::1        5337352     - 1359379884   290225     -  128123590     -
 en1        1500  <Link#17>                            10     0       1000       10     0       2000     0
 ipsec0     1400  <Link#30>                          8000     0  900000000     8000     0  100000000     0
 """
