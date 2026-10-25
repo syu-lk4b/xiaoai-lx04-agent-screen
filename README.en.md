@@ -15,7 +15,7 @@ This project builds on [cenzihao1987-svg/lx04-status-display](https://github.com
 
 - **Mac controls**: a page of 12 icon buttons — tap to put the Mac's display to sleep, start the screen saver, keep it awake, or open everyday apps (Music, terminals, Claude, VS Code, Chrome, WeChat, Obsidian, and more). Only whitelisted, harmless actions run — never arbitrary commands; button icons come straight from the apps themselves
 - **Mac performance monitoring**: live CPU, GPU, memory, and network throughput with charts of the last 4 minutes. Everything is collected through system interfaces that need no extra permissions, and nothing is sampled while nobody is looking
-- **Photos**: reads the trips the macOS Photos library detected on its own and shows its curated picks on the speaker — no more copying photos onto the device. Read-only; the library is never modified
+- **Photos**: shows a random slideshow of photos with people in them from the past two years of your macOS Photos library — no more copying photos onto the device. Read-only; the library is never modified
 
 | Mac performance | Mac controls | Photos |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Plus some supporting improvements:
 
 Swipe left and right between five pages: Codex, Claude, Mac Status, Mac Controls, and Photos. Left alone, it rotates on its own — the Photos page stays 5 minutes, every other page 1 minute (change with `?photo=N` / `?rotate=N`, in seconds). When a task is waiting for your approval, it stays on that page. Once neither Codex nor Claude has been busy for 10 minutes, it parks on the Photos page as a photo frame (`?idle=N` to change, `?idle=0` to turn off); as soon as a task starts running, it jumps back to that agent's page and resumes rotating.
 
-**The Photos page** reads the macOS Photos library directly: the 4 most recent trips Photos detected on its own, and the few dozen shots it curated for each, changing every 12 seconds, with portrait photos shown in pairs. No more copying photos onto the speaker. Read-only — the library is never modified; photos that live only in iCloud and aren't downloaded to this Mac are skipped.
+**The Photos page** reads the macOS Photos library directly: a random pick of photos with people in them from the past two years (using Photos' own face detection, skipping pets, strangers in the background and photos of ID documents), changing every 12 seconds, with portrait photos shown in pairs and crops centered on faces. No more copying photos onto the speaker. Read-only — the library is never modified; photos that live only in iCloud and aren't downloaded to this Mac are skipped. Tune with `LX04_PHOTO_YEARS` (default 2) and `LX04_PHOTO_COUNT` (default 300).
 
 **Screen off at night**: 23:00–07:00 by default; in the morning the screen wakes and returns to the status page. To change the window, add `"sleep": "23:30-07:00"` to `~/Library/Application Support/lx04-status/adb-endpoint.json`, or `"off"` to disable.
 
