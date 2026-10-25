@@ -358,7 +358,7 @@
              font-size:15px; color:rgba(255,255,255,.55); }
 
   /* ── 相册页 ──
-     「照片」App 识别出的最近几次旅行（bridge/photos.py）。图在 Mac 上已裁成屏幕尺寸：
+     过去两年有人物的照片随机轮播（bridge/photos.py）。图在 Mac 上已裁成屏幕尺寸：
      横图 800×480 一张，竖图 400×480 两张并排。不做运镜——满屏照片平移是最贵的那种合成，
      只在换图时做一次淡入。两层同前面的背景：底层恒不透明，只把上层从 0 淡到 1。 */
   .page.f .card { background:#07090d; }
@@ -545,7 +545,7 @@
         <div class="v clock"><span class="hh">--</span><span class="cl">:</span><span class="mm">--</span></div>
       </div>
       <div class="cap"><div class="pl" id="phPlace"></div><div class="dt" id="phDate"></div></div>
-      <div class="none" id="phNone" hidden>图库里还没有旅行照片</div>
+      <div class="none" id="phNone" hidden>图库里还没有人物照片</div>
     </div>
     </div>
   </div>
@@ -1180,23 +1180,23 @@ setInterval(function () {
 // ── 相册 ──
 // 列表十分钟拉一次；只在相册页可见时换图，翻走了就停在原处，下次回来接着放
 const SLIDE_MS = 12000;
-const album = { trips: [], slides: [], i: -1, top: 0, busy: false, shownAt: 0 };
+const album = { moments: [], slides: [], i: -1, top: 0, busy: false, shownAt: 0 };
 
-// 竖图两两并排成一屏：同一次旅行里相邻的两张竖图凑一对，落单的居中
+// 竖图两两并排成一屏：相邻的两张竖图凑一对（服务端已把竖图排成挨着的），落单的居中
 function toSlides(list) {
   const out = [];
   let lone = null;
   list.forEach(function (p) {
     if (!p.portrait) { out.push([p]); return; }
-    if (lone && lone.trip === p.trip) { out.push([lone, p]); lone = null; return; }
-    if (lone) out.push([lone]);
+    if (lone) { out.push([lone, p]); lone = null; return; }
     lone = p;
   });
   if (lone) out.push([lone]);
   return out;
 }
 
-function tripDate(t) {
+function momentDate(t) {
+  if (!t.start) return '';
   const a = new Date(t.start * 1000), b = new Date(t.end * 1000);
   const ma = MON[a.getMonth()], mb = MON[b.getMonth()];
   if (a.getFullYear() !== b.getFullYear()) {
@@ -1215,7 +1215,7 @@ function loadAlbum() {
   xhr.onload = function () {
     try {
       const r = JSON.parse(xhr.responseText);
-      album.trips = r.trips || [];
+      album.moments = r.moments || [];
       album.slides = toSlides(r.photos || []);
       if (album.i >= album.slides.length) album.i = -1;
       $('phNone').hidden = album.slides.length > 0;
@@ -1254,9 +1254,10 @@ function nextSlide() {
       layer.style.webkitTransition = layer.style.transition = '';
       layer.style.opacity = '1';
       album.top = 1 - album.top;
-      const t = album.trips[shot[0].trip];
+      // 两张竖图可能来自不同时刻，标题跟左边那张
+      const t = album.moments[shot[0].moment];
       $('phPlace').textContent = t ? t.place : '';
-      $('phDate').textContent = t ? tripDate(t) : '';
+      $('phDate').textContent = t ? momentDate(t) : '';
       album.shownAt = Date.now();
     };
     img.src = '/photos/' + p.id + '.jpg';

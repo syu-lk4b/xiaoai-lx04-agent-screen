@@ -13,42 +13,60 @@ import photos
 U = "AC6664E7-D9F2-43CA-89A7-DC39EACCB2%02d"
 
 
+NOW = 900000000 + photos.EPOCH  # 测试里的「现在」：Core Data 时间 900000000
+YEAR = 365.25 * 86400
+
+
 def make_library(path):
     conn = sqlite3.connect(path)
     conn.executescript("""
-    create table ZPHOTOSHIGHLIGHT (Z_PK integer primary key, ZKIND int, ZSUBTITLE text,
-                                   ZSTARTDATE real, ZENDDATE real);
+    create table ZMOMENT (Z_PK integer primary key, ZTITLE text, ZSTARTDATE real, ZENDDATE real);
     create table ZASSET (Z_PK integer primary key, ZUUID text, ZDIRECTORY text, ZFILENAME text,
                          ZWIDTH int, ZHEIGHT int, ZDATECREATED real, ZKIND int, ZHIDDEN int,
-                         ZTRASHEDSTATE int, ZISDETECTEDSCREENSHOT int, ZOVERALLAESTHETICSCORE real,
-                         ZDAYGROUPHIGHLIGHTBEINGASSETS int, ZDAYGROUPHIGHLIGHTBEINGSUMMARYASSETS int);
+                         ZTRASHEDSTATE int, ZISDETECTEDSCREENSHOT int, ZMOMENT int,
+                         ZOVERALLAESTHETICSCORE real default .5);
+    create table ZDETECTEDFACE (Z_PK integer primary key, ZASSETFORFACE int, ZSIZE real, ZHIDDEN int,
+                                ZDETECTIONTYPE int default 1, ZCENTERX real default .5,
+                                ZCENTERY real default .5);
     """)
-    conn.executemany("insert into ZPHOTOSHIGHLIGHT values (?,?,?,?,?)", [
-        (1, 3, "Japan", 800000000, 800500000),        # 旅行，有精选
-        (2, 3, "Beijing", 700000000, 700100000),      # 更早的旅行，没精选
-        (3, 0, "Shanghai", 900000000, 900000000),     # 普通的一天，不是旅行
-        (4, 3, "Empty", 600000000, 600000000),        # 一张能用的都没有
+    conn.executemany("insert into ZMOMENT values (?,?,?,?)", [
+        (1, "Los Angeles", 899000000, 899100000),
+        (2, None, 880000000, 880000500),             # 没标题的时刻
     ])
     rows = [
-        # uuid, w, h, created, kind, hidden, trashed, screenshot, score, day-group, summary
-        (U % 1, 4000, 3000, 800000300, 0, 0, 0, 0, .5, 1, 1),
-        (U % 2, 3000, 4000, 800000100, 0, 0, 0, 0, .4, 1, 1),   # 竖图，拍得早
-        (U % 3, 4000, 3000, 800000200, 0, 0, 0, 0, .9, 1, None),  # 没进精选
-        (U % 4, 4000, 3000, 800000400, 0, 1, 0, 0, .9, 1, 1),   # 隐藏
-        (U % 5, 4000, 3000, 800000500, 1, 0, 0, 0, .9, 1, 1),   # 视频
-        (U % 6, 4000, 3000, 800000600, 0, 0, 0, 1, .9, 1, 1),   # 截屏
-        (U % 7, 4000, 3000, 700000100, 0, 0, 0, 0, .2, 2, None),
-        (U % 8, 4000, 3000, 700000200, 0, 0, 0, 0, .8, 2, None),
-        (U % 9, 4000, 3000, 700000300, 0, 0, 0, 0, .5, 2, None),
-        (U % 10, 4000, 3000, 900000100, 0, 0, 0, 0, .9, 3, 3),
-        (U % 11, 4000, 3000, 600000100, 0, 0, 1, 0, .9, 4, 4),  # 废纸篓
-        ("not-a-uuid", 4000, 3000, 800000700, 0, 0, 0, 0, .9, 1, 1),
+        # pk, uuid, w, h, created, kind, hidden, trashed, screenshot, moment
+        (1, U % 1, 4000, 3000, 899000100, 0, 0, 0, 0, 1),
+        (2, U % 2, 3000, 4000, 899000200, 0, 0, 0, 0, 1),   # 竖图
+        (3, U % 3, 3000, 4000, 880000100, 0, 0, 0, 0, 2),   # 竖图，另一个时刻
+        (4, U % 4, 4000, 3000, 899000300, 0, 1, 0, 0, 1),   # 隐藏
+        (5, U % 5, 4000, 3000, 899000400, 1, 0, 0, 0, 1),   # 视频
+        (6, U % 6, 4000, 3000, 899000500, 0, 0, 0, 1, 1),   # 截屏
+        (7, U % 7, 4000, 3000, 899000600, 0, 0, 1, 0, 1),   # 废纸篓
+        (8, U % 8, 4000, 3000, 899000700, 0, 0, 0, 0, 1),   # 只有背景里的小脸
+        (9, U % 9, 4000, 3000, 899000800, 0, 0, 0, 0, 1),   # 脸被用户隐藏
+        (10, U % 10, 4000, 3000, 899000900, 0, 0, 0, 0, 1),  # 没有脸的风景
+        (11, U % 11, 4000, 3000, 900000000 - 3 * YEAR, 0, 0, 0, 0, None),  # 三年前
+        (12, "not-a-uuid", 4000, 3000, 899001000, 0, 0, 0, 0, 1),
+        (13, U % 13, 4000, 3000, 899001100, 0, 0, 0, 0, 1),  # 狗
+        (14, U % 14, 4000, 3000, 899001200, 0, 0, 0, 0, 1),  # 证件翻拍：评分低
+        (15, U % 15, 4000, 3000, 899001300, 0, 0, 0, 0, 1),  # 还没评分
     ]
     conn.executemany(
-        "insert into ZASSET (ZUUID, ZDIRECTORY, ZFILENAME, ZWIDTH, ZHEIGHT, ZDATECREATED, ZKIND, "
-        "ZHIDDEN, ZTRASHEDSTATE, ZISDETECTEDSCREENSHOT, ZOVERALLAESTHETICSCORE, "
-        "ZDAYGROUPHIGHLIGHTBEINGASSETS, ZDAYGROUPHIGHLIGHTBEINGSUMMARYASSETS) "
-        "values (?,'A','x.heic',?,?,?,?,?,?,?,?,?,?)", rows)
+        "insert into ZASSET (Z_PK, ZUUID, ZDIRECTORY, ZFILENAME, ZWIDTH, ZHEIGHT, ZDATECREATED, "
+        "ZKIND, ZHIDDEN, ZTRASHEDSTATE, ZISDETECTEDSCREENSHOT, ZMOMENT) "
+        "values (?,?,'A','x.heic',?,?,?,?,?,?,?,?)", rows)
+    conn.execute("update ZASSET set ZOVERALLAESTHETICSCORE = .15 where Z_PK = 14")
+    conn.execute("update ZASSET set ZOVERALLAESTHETICSCORE = null where Z_PK = 15")
+    faces = [(pk, .2, 0) for pk in (1, 2, 3, 4, 5, 6, 7, 11, 12, 14, 15)]
+    faces += [(8, .01, 0), (9, .3, 1)]
+    conn.executemany("insert into ZDETECTEDFACE (ZASSETFORFACE, ZSIZE, ZHIDDEN) values (?,?,?)", faces)
+    conn.executemany(
+        "insert into ZDETECTEDFACE (ZASSETFORFACE, ZSIZE, ZHIDDEN, ZDETECTIONTYPE, ZCENTERX, ZCENTERY) "
+        "values (?,?,?,?,?,?)", [
+            (1, .01, 0, 1, .9, .1),    # 背景小脸：不参与对焦
+            (1, .2, 0, 1, .1, .9),     # 和上面默认居中的那张一起：对焦点是两张大脸的加权中心
+            (13, .3, 0, 3, .5, .5),
+        ])
     conn.commit()
     conn.close()
 
@@ -63,25 +81,50 @@ class QueryTests(unittest.TestCase):
     def tearDown(self):
         self.dir.cleanup()
 
-    def test_trips_newest_first_with_curated_photos_in_time_order(self):
-        r = photos.query(self.db)
-        self.assertEqual([t["place"] for t in r["trips"]], ["Japan", "Beijing"])
-        self.assertEqual(r["trips"][0]["start"], 800000000 + photos.EPOCH)
-        japan = [p["id"] for p in r["photos"] if p["trip"] == 0]
-        # 只要精选里的，按拍摄时间；隐藏、视频、截屏、坏 id 都剔掉
-        self.assertEqual(japan, [U % 2, U % 1])
-        self.assertTrue(r["photos"][0]["portrait"])
-        self.assertFalse(r["photos"][1]["portrait"])
+    def test_only_recent_photos_with_a_real_face(self):
+        r = photos.query(self.db, now=NOW)
+        # 隐藏、视频、截屏、废纸篓、只有小脸、脸被隐藏、没脸、宠物、证件翻拍、没评分、三年前、坏 id 都剔掉
+        self.assertEqual({p["id"] for p in r["photos"]}, {U % 1, U % 2, U % 3})
+        r = photos.query(self.db, years=4, now=NOW)
+        self.assertIn(U % 11, {p["id"] for p in r["photos"]})
 
-    def test_trip_without_curation_falls_back_to_best_scored(self):
-        r = photos.query(self.db, per_trip=2)
-        beijing = [p["id"] for p in r["photos"] if p["trip"] == 1]
-        self.assertEqual(beijing, [U % 8, U % 9])  # 分最高的两张，再按时间排
+    def test_focus_is_size_weighted_center_of_real_faces_from_top_left(self):
+        focus = {p["id"]: p["_focus"] for p in photos.query(self.db, now=NOW)["photos"]}
+        # U%1：两张 0.2 的脸在 (.5,.5) 和 (.1,.9)，背景小脸不算；y 从左下原点翻成左上
+        self.assertAlmostEqual(focus[U % 1][0], .3)
+        self.assertAlmostEqual(focus[U % 1][1], .3)
+        self.assertEqual(focus[U % 2], (.5, .5))
 
-    def test_trip_limit(self):
-        r = photos.query(self.db, trips=1)
-        self.assertEqual(len(r["trips"]), 1)
-        self.assertEqual({p["trip"] for p in r["photos"]}, {0})
+    def test_moment_gives_place_and_dates(self):
+        r = photos.query(self.db, now=NOW)
+        by_id = {p["id"]: r["moments"][p["moment"]] for p in r["photos"]}
+        self.assertEqual(by_id[U % 1], {"place": "Los Angeles", "start": 899000000 + photos.EPOCH,
+                                        "end": 899100000 + photos.EPOCH})
+        self.assertEqual(by_id[U % 3]["place"], "")
+        self.assertIs(by_id[U % 1], by_id[U % 2])  # 同一时刻只出一份
+
+    def test_photo_without_moment_uses_its_own_date(self):
+        r = photos.query(self.db, years=4, now=NOW)
+        lone = next(p for p in r["photos"] if p["id"] == U % 11)
+        self.assertEqual(r["moments"][lone["moment"]]["start"], lone["at"])
+
+    def test_count_limit(self):
+        # 坏 id 是抽完才剔的，会让数量随机少一张；这里只测上限
+        conn = sqlite3.connect(self.db)
+        conn.execute("delete from ZASSET where ZUUID = 'not-a-uuid'")
+        conn.commit()
+        conn.close()
+        self.assertEqual(len(photos.query(self.db, count=2, now=NOW)["photos"]), 2)
+
+    def test_portraits_end_up_adjacent(self):
+        r = photos.query(self.db, now=NOW)
+        ids = [p["id"] for p in r["photos"]]
+        self.assertEqual(abs(ids.index(U % 2) - ids.index(U % 3)), 1)
+
+    def test_pair_portraits(self):
+        P = lambda n, portrait: {"id": n, "portrait": portrait}
+        out = photos.pair_portraits([P(1, True), P(2, False), P(3, False), P(4, True), P(5, True)])
+        self.assertEqual([p["id"] for p in out], [1, 4, 2, 3, 5])
 
     def test_database_is_opened_read_only(self):
         uri = "file:" + photos.quote(str(self.db)) + "?mode=ro"
@@ -107,17 +150,33 @@ class CropTests(unittest.TestCase):
             self.assertGreaterEqual(ch, 480)
 
 
+class OffsetTests(unittest.TestCase):
+    def test_window_follows_faces(self):
+        # 960×480 的横图裁 800 宽：脸在最左边就贴左，在最右就贴右，居中就居中
+        self.assertEqual(photos.crop_offset((960, 480), photos.SCREEN, (0, .5)), (0, 0))
+        self.assertEqual(photos.crop_offset((960, 480), photos.SCREEN, (1, .5)), (160, 0))
+        self.assertEqual(photos.crop_offset((960, 480), photos.SCREEN, (.5, .5)), (80, 0))
+
+    def test_faces_sit_in_upper_part_of_window(self):
+        # 800×600 裁 480 高：脸在 y=300，放到窗口 40% 处 -> 窗口从 300-192=108 开始
+        self.assertEqual(photos.crop_offset((800, 600), photos.SCREEN, (.5, .5)), (0, 108))
+        # 脸贴顶就不再往上取（不越界）
+        self.assertEqual(photos.crop_offset((800, 600), photos.SCREEN, (.5, .05)), (0, 0))
+        self.assertEqual(photos.crop_offset((800, 600), photos.SCREEN, (.5, 1)), (0, 120))
+
+
 class AlbumTests(unittest.TestCase):
     def test_photos_without_local_file_are_dropped(self):
         with tempfile.TemporaryDirectory() as d:
             library = Path(d)
             (library / "database").mkdir()
             make_library(library / "database" / "Photos.sqlite")
-            # 只有 U%1 有本地渲染件，U%2 只在 iCloud
+            # 只有 U%1 有本地渲染件，U%2、U%3 只在 iCloud
             derivatives = library / "resources" / "derivatives" / "A"
             derivatives.mkdir(parents=True)
             (derivatives / f"{U % 1}_1_105_c.jpeg").write_bytes(b"x")
-            with unittest.mock.patch.object(photos, "LIBRARY", library):
+            with unittest.mock.patch.object(photos, "LIBRARY", library), \
+                    unittest.mock.patch.object(photos.time, "time", return_value=NOW):
                 r = photos.Album().read()
             self.assertEqual([p["id"] for p in r["photos"]], [U % 1])
             self.assertNotIn("_src", r["photos"][0])  # 本地路径不发给页面
@@ -126,7 +185,7 @@ class AlbumTests(unittest.TestCase):
 class ImageTests(unittest.TestCase):
     def test_only_listed_ids_are_served(self):
         album = photos.Album()
-        album._value = {"trips": [], "photos": []}
+        album._value = {"moments": [], "photos": []}
         album._index = {}
         self.assertIsNone(album.image(U % 1))
         self.assertIsNone(album.image("../../etc/passwd"))

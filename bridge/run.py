@@ -25,7 +25,7 @@ import claude  # noqa: E402  bridge/claude.py，Claude 侧的采集
 import access  # noqa: E402  bridge/access.py，谁能访问
 import mac  # noqa: E402  bridge/mac.py，Mac 控制页的动作
 import system  # noqa: E402  bridge/system.py，Mac 状态页的数据
-import photos  # noqa: E402  bridge/photos.py，相册页的旅行照片
+import photos  # noqa: E402  bridge/photos.py，相册页的人物照片
 
 DISPLAY = ROOT / "display"
 # 页面要的静态资源就这几类，多的不开
