@@ -68,7 +68,6 @@ Codex 和 Claude 正在干什么、额度还剩多少、哪个任务卡住了需
 - 音箱上装一个能全屏的浏览器，推荐 [Via](https://viayoo.com/)（体积小，能隐藏地址栏）
 
 > 状态屏只读本地文件，不连任何云服务，也不需要小米账号。
-> （除非你要开语音播报，见[下面](#可选打开语音播报)）
 
 ---
 
@@ -197,66 +196,8 @@ ffmpeg -i 你的素材.mov \
 
 ---
 
-## 遇到问题
-
-**反复闪退、黑屏或重复开页签**
-本版只加载当前可见页的视频，页面请求五秒超时且不并发堆积；ADB 失联不会自动刷新浏览器，显式打开也复用当前页签。更新后在 Mac 运行 `python3 scripts/adb-bridge.py --open` 加载新版页面，并重启常驻代理。验证结果、日志说明与回退方法见 [稳定性说明](docs/稳定性说明.md)。这些修复降低已知风险，不代表已排除所有系统重启或 Wi-Fi 问题。
-
-**只露出左上角一块、字特别大**
-viewport 被锁死了。这块屏物理 800×480，但浏览器眼里只有 534×320（dpr=1.5）。确认 `index.html` 的 viewport 那行没被改坏。
-
-**背景不动 / 显示成静态图**
-视频没解出来，退回图片层了。打开 `http://<你的Mac>:8477/_v.html`，那页会把 `readyState`、`error`、元素尺寸都列出来。
-
-**刷新之后就不动了**
-这是我们踩过的坑：Chromium 61 缓存分片响应的行为不可靠，会把半个文件存住。所以服务端对视频一律 `no-store`。如果你改过缓存策略，改回去。
-
-**上滑把整个页面顶上去了**
-浏览器的地址栏在抢手势。页面已经用 `touch-action: pan-y` 和磁吸做了限制，但不同浏览器表现不同，建议用 Via 并打开「全屏」。
-
-更多细节在 [docs/使用说明.md](docs/使用说明.md)。
-
----
-
-## 鸣谢
-
-**参考的项目**
-
-- **[cenzihao1987-svg/lx04-status-display](https://github.com/cenzihao1987-svg/lx04-status-display)** —— 上游项目，本仓库在它的基础上开发
-- **[yihong0618/mibe](https://github.com/yihong0618/mibe)**（MIT）—— Codex 会话日志跟读与小爱音箱播报
-- **[LX04 刷机教程（什么值得买）](https://post.smzdm.com/p/akk3k89r/)** —— [刷机手册](docs/刷机手册.md) 的来源，固件在评论区
-
-**素材**
-
-- **[影视飓风](https://www.ysjf.com/material)** —— 背景视频衍生自他们公开发布的免费样片。
-
-  仓库里的 `display/meili.mp4`、`display/canyon.mp4` 及对应的 `*-lite.mp4` **不是原片**：已从 4K 裁切缩放到
-  800×480、重新调色（色温与饱和度均大幅调整）、转码成 H.264 并重排为无缝循环，
-  只作为本项目的界面背景。原始素材请到 [飓风素材库](https://www.ysjf.com/material) 获取。
-  如果权利人认为此处使用不当，请提 issue 告知，我会立即移除。
-- **[Unsplash](https://unsplash.com/)** —— 兜底用的静态背景图
-- `display/night.jpg`、`display/dusk.jpg`（Mac 状态页、控制页背景）由 `scripts/backgrounds.html` 程序生成，
-  不涉及第三方素材；改参数后运行 `./scripts/render-backgrounds.sh` 重新出图
-- **Roboto**（Apache 2.0）—— 界面字体。它是 Android 原生字体，这样 Mac 预览和真机显示才一致
-
----
-
-## 可选：打开语音播报
-
-除了看屏，还能让音箱把状态念出来。这一步需要小米账号（走 mibe 的能力）：
-
-```bash
-export MI_USER=你的小米账号
-export MI_PASS=你的密码
-./scripts/start.sh --speak
-```
-
-账号只在本地用于登录小米云服务，不经过任何第三方。**开机自启默认不带播报**——LaunchAgent 读不到你 shell 里的环境变量，硬塞进配置文件等于把账号明文写在磁盘上。
-
----
-
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
 
-背景视频和图片不适用本许可证，版权归各自作者所有，见上面的鸣谢。
+背景视频和图片不适用本许可证，版权归各自作者所有。
