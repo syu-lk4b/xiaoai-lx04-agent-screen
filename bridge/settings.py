@@ -17,6 +17,7 @@ ENDPOINT_FILE = APP_DIR / "adb-endpoint.json"
 
 PAGE_IDS = ("codex", "claude", "sys", "mac", "photo")
 SAFE_ID_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+PERSON_UUID_RE = re.compile(r"^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
 DEFAULT_DWELL = {
     "codex": 60,
     "claude": 60,
@@ -128,6 +129,22 @@ def _normalize_mac_items(raw_items):
     return out
 
 
+def _normalize_photo_people(raw_people):
+    """清洗相册指定人物 UUID 列表，去重并限制上限。"""
+    if not isinstance(raw_people, list):
+        return []
+    out = []
+    seen = set()
+    for item in raw_people:
+        if not isinstance(item, str) or len(out) >= 50:
+            continue
+        u = item.strip().upper()
+        if PERSON_UUID_RE.match(u) and u not in seen:
+            seen.add(u)
+            out.append(u)
+    return out
+
+
 def defaults():
     """返回一份全新的默认配置字典。"""
     return {
@@ -146,6 +163,7 @@ def defaults():
         "slide_seconds": 12,
         "photo_years": 2.0,
         "photo_count": 300,
+        "photo_people": [],
         "sleep": DEFAULT_SLEEP,
     }
 
@@ -234,6 +252,7 @@ def normalize(raw):
 
     sleep = _valid_sleep(raw.get("sleep")) or DEFAULT_SLEEP
     mac_items = _normalize_mac_items(raw.get("mac_items"))
+    photo_people = _normalize_photo_people(raw.get("photo_people"))
 
     return {
         "pages": pages,
@@ -248,6 +267,7 @@ def normalize(raw):
         "slide_seconds": _clamp_int(raw.get("slide_seconds"), 3, 600, base["slide_seconds"]),
         "photo_years": _clamp_float(raw.get("photo_years"), 0.5, 30.0, base["photo_years"]),
         "photo_count": _clamp_int(raw.get("photo_count"), 10, 2000, base["photo_count"]),
+        "photo_people": photo_people,
         "sleep": sleep,
     }
 

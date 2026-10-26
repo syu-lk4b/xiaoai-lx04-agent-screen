@@ -50,19 +50,25 @@ EPOCH = 978307200      # Core Data 的时间从 2001-01-01 算起
 UUID = re.compile(r"^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$")
 
 # 隐藏、废纸篓、截屏、视频一律不要；人脸被用户在「照片」里隐藏的也不算
-_FACES = """from ZDETECTEDFACE f where f.ZASSETFORFACE = a.Z_PK and f.ZDETECTIONTYPE = :human
-            and coalesce(f.ZHIDDEN, 0) = 0 and f.ZSIZE >= :min_face"""
-_PEOPLE_SQL = f"""
+def _faces_clause(person_placeholders=""):
+    extra = f" and f.ZPERSONFORFACE in (select p.Z_PK from ZPERSON p where p.ZPERSONUUID in ({person_placeholders}))" if person_placeholders else ""
+    return f"""from ZDETECTEDFACE f where f.ZASSETFORFACE = a.Z_PK and f.ZDETECTIONTYPE = :human
+            and coalesce(f.ZHIDDEN, 0) = 0 and f.ZSIZE >= :min_face{extra}"""
+
+
+def _people_sql(person_placeholders=""):
+    faces = _faces_clause(person_placeholders)
+    return f"""
 select a.ZUUID, a.ZDIRECTORY, a.ZFILENAME, a.ZWIDTH, a.ZHEIGHT, a.ZDATECREATED,
        a.ZMOMENT, m.ZTITLE, m.ZSTARTDATE, m.ZENDDATE,
-       (select sum(f.ZCENTERX * f.ZSIZE) / sum(f.ZSIZE) {_FACES}),
-       (select sum(f.ZCENTERY * f.ZSIZE) / sum(f.ZSIZE) {_FACES})
+       (select sum(f.ZCENTERX * f.ZSIZE) / sum(f.ZSIZE) {faces}),
+       (select sum(f.ZCENTERY * f.ZSIZE) / sum(f.ZSIZE) {faces})
 from ZASSET a left join ZMOMENT m on m.Z_PK = a.ZMOMENT
 where a.ZKIND = 0 and a.ZHIDDEN = 0 and a.ZTRASHEDSTATE = 0
   and coalesce(a.ZISDETECTEDSCREENSHOT, 0) = 0
   and coalesce(a.ZOVERALLAESTHETICSCORE, 0) >= :min_aesthetic
   and a.ZDATECREATED >= :since
-  and exists (select 1 {_FACES})
+  and exists (select 1 {faces})
 order by random() limit :count
 """
 
@@ -82,21 +88,32 @@ def pair_portraits(photos):
     return out
 
 
-def query(db_path, years=YEARS, count=COUNT, now=None):
+def query(db_path, years=YEARS, count=COUNT, people=None, now=None):
     """图库数据库 -> {"moments": [...], "photos": [...]}，照片随机顺序、竖图成对相邻。
 
+    people 为指定的 ZPERSONUUID 列表（为空或 None 时不过滤特定人物）。
     photos 的每项：id（UUID）、moment（moments 下标）、portrait、at（unix 秒），
     外加 _src、_focus 给本模块出图用，不发给页面。moments 每项：place（可能为空）、start、end。
     """
     since = (time.time() if now is None else now) - years * 365.25 * 86400 - EPOCH
+    valid_people = [u.upper() for u in (people or []) if isinstance(u, str) and UUID.match(u.upper())]
     uri = "file:" + quote(str(db_path)) + "?mode=ro"
     conn = sqlite3.connect(uri, uri=True, timeout=5)
     try:
         moments, index, photos = [], {}, []
         params = {"since": since, "min_face": MIN_FACE, "human": HUMAN,
                   "min_aesthetic": MIN_AESTHETIC, "count": count}
+        placeholders = ""
+        if valid_people:
+            keys = []
+            for idx, u in enumerate(valid_people):
+                k = f"p{idx}"
+                keys.append(f":{k}")
+                params[k] = u
+            placeholders = ", ".join(keys)
+        sql = _people_sql(placeholders)
         for (uuid, directory, filename, width, height, created,
-             moment, place, start, end, fx, fy) in conn.execute(_PEOPLE_SQL, params):
+             moment, place, start, end, fx, fy) in conn.execute(sql, params):
             if not uuid or not UUID.match(uuid):
                 continue
             if moment not in index:
@@ -117,6 +134,83 @@ def query(db_path, years=YEARS, count=COUNT, now=None):
                 "_focus": (fx, 1 - fy) if fx is not None and fy is not None else (.5, .5),
             })
         return {"moments": moments, "photos": pair_portraits(photos)}
+    finally:
+        conn.close()
+
+
+def list_people(db_path=None, limit=24):
+    """列出图库里已命名或高频出现的人物，供 /setting 勾选家人。"""
+    db = (LIBRARY / "database" / "Photos.sqlite") if db_path is None else Path(db_path)
+    if not db.is_file():
+        return []
+    uri = "file:" + quote(str(db)) + "?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+    except sqlite3.Error as exc:
+        print(f"[photos] 读取人物列表失败：{exc}", file=sys.stderr)
+        return []
+    try:
+        sql = """
+        select p.ZPERSONUUID,
+               coalesce(nullif(trim(p.ZFULLNAME), ''), nullif(trim(p.ZDISPLAYNAME), '')) as name,
+               coalesce(p.ZTYPE, 0) as fav,
+               coalesce(p.ZFACECOUNT, 0) as faces
+        from ZPERSON p
+        where coalesce(p.ZDETECTIONTYPE, 1) = 1
+          and p.ZMERGETARGETPERSON is null
+          and p.ZPERSONUUID is not null
+          and coalesce(p.ZFACECOUNT, 0) >= 3
+        order by (name is not null) desc, fav desc, faces desc
+        limit :limit
+        """
+        out = []
+        for uuid, name, fav, faces in conn.execute(sql, {"limit": limit}):
+            u = (uuid or "").strip().upper()
+            if not UUID.match(u):
+                continue
+            out.append({
+                "id": u,
+                "name": name or "",
+                "favorite": bool(fav == 1),
+                "count": int(faces),
+            })
+        return out
+    except sqlite3.Error as exc:
+        print(f"[photos] 查询人物列表失败：{exc}", file=sys.stderr)
+        return []
+    finally:
+        conn.close()
+
+
+def person_avatar(person_uuid, db_path=None):
+    """返回指定人物的 JPEG 头像字节：优先读 ZFACECROP.ZRESOURCEDATA，仅限 Mac 设置页调用。"""
+    if not isinstance(person_uuid, str):
+        return None
+    u = person_uuid.strip().upper()
+    if not UUID.match(u):
+        return None
+    db = (LIBRARY / "database" / "Photos.sqlite") if db_path is None else Path(db_path)
+    if not db.is_file():
+        return None
+    uri = "file:" + quote(str(db)) + "?mode=ro"
+    try:
+        conn = sqlite3.connect(uri, uri=True, timeout=5)
+    except sqlite3.Error:
+        return None
+    try:
+        row = conn.execute(
+            """select fc.ZRESOURCEDATA
+               from ZPERSON p
+               join ZFACECROP fc on fc.ZPERSON = p.Z_PK
+               where upper(p.ZPERSONUUID) = :u and fc.ZRESOURCEDATA is not null
+               order by fc.Z_PK desc limit 1""",
+            {"u": u},
+        ).fetchone()
+        if row and isinstance(row[0], (bytes, memoryview)) and bytes(row[0]).startswith(b"\xff\xd8"):
+            return bytes(row[0])
+        return None
+    except sqlite3.Error:
+        return None
     finally:
         conn.close()
 
@@ -169,16 +263,17 @@ class Album:
         self._value = None
         self._index = {}
 
-    def read(self, years=None, count=None):
+    def read(self, years=None, count=None, people=None):
         years = YEARS if years is None else years
         count = COUNT if count is None else count
-        params = (years, count)
+        people_tuple = tuple(sorted(u.upper() for u in (people or []) if isinstance(u, str) and UUID.match(u.upper())))
+        params = (years, count, people_tuple)
         with self._lock:
             now = time.monotonic()
             if self._value is None or self._params != params or now - self._at >= REFRESH_SECONDS:
                 db = LIBRARY / "database" / "Photos.sqlite"
                 try:
-                    value = query(db, years=years, count=count)
+                    value = query(db, years=years, count=count, people=people_tuple)
                 except sqlite3.Error as exc:
                     # 最常见的原因：后台服务没有读图库的权限（见 README「相册页」）
                     print(f"[photos] 读图库失败：{exc}", file=sys.stderr)
@@ -235,8 +330,8 @@ class Album:
 _album = Album()
 
 
-def read(years=None, count=None):
-    return _album.read(years=years, count=count)
+def read(years=None, count=None, people=None):
+    return _album.read(years=years, count=count, people=people)
 
 
 def image(uuid):
