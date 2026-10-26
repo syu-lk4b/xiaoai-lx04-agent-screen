@@ -35,6 +35,28 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(mac.run_action("awake"), (True, "防休眠已关闭"))
         self.assertFalse(mac.state()["awake"])
 
+    def test_custom_configured_app_runs_open(self):
+        done = subprocess.CompletedProcess([], 0, "", "")
+        custom = [{"id": "safari", "name": "Safari", "path": "/Applications/Safari.app"}]
+        with patch.object(mac.settings, "read", return_value={"mac_items": custom}), \
+                patch.object(mac.subprocess, "run", return_value=done) as run:
+            self.assertEqual(mac.run_action("safari"), (True, "已执行"))
+            self.assertEqual(run.call_args[0][0], ["open", "/Applications/Safari.app"])
+
+    def test_volume_controls_system_and_fallback_to_music(self):
+        done = subprocess.CompletedProcess([], 0, "", "")
+        with patch.object(mac, "_read_volume", return_value=(40, False, "system")), \
+                patch.object(mac.subprocess, "run", return_value=done) as run:
+            self.assertEqual(mac.run_action("volume_up"), (True, "音量 50%"))
+            self.assertIn("output volume 50", run.call_args[0][0][-1])
+            self.assertEqual(mac.run_action("volume_mute"), (True, "已静音"))
+            self.assertTrue(mac.state()["muted"])
+
+        with patch.object(mac, "_read_volume", return_value=(30, False, "music")), \
+                patch.object(mac.subprocess, "run", return_value=done) as run:
+            self.assertEqual(mac.run_action("volume_down"), (True, "Music 音量 20%"))
+            self.assertIn("sound volume to 20", run.call_args[0][0][-1])
+
 
 class IconTests(unittest.TestCase):
     def setUp(self):

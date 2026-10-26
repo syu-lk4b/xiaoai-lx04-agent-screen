@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LX04 状态屏 · 设置</title>
+<style>
+  :root {
+    --bg: #0b0f17;
+    --card: #131a26;
+    --card-alt: #182131;
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #f1f5f9;
+    --muted: #94a3b8;
+    --accent: #3987e5;
+    --accent-hover: #4d97f0;
+    --ok: #22c55e;
+    --warn: #f59e0b;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "SF Pro Text", sans-serif;
+    line-height: 1.5;
+    padding: 32px 20px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 24px; gap: 16px; flex-wrap: wrap;
+  }
+  .title-box h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+  .title-box p { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .preview-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border-radius: 10px;
+    background: var(--card); border: 1px solid var(--border);
+    color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .preview-link:hover { background: var(--card-alt); border-color: rgba(255,255,255,0.18); }
+
+  .section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 22px;
+    margin-bottom: 18px;
+  }
+  .section-head {
+    display: flex; align-items: baseline; justify-content: space-between;
+    margin-bottom: 14px; gap: 12px; flex-wrap: wrap;
+  }
+  .section-head h2 { font-size: 16px; font-weight: 600; }
+  .section-head span { font-size: 12px; color: var(--muted); }
+
+  /* 顶部快捷切页遥控栏 */
+  .remote-bar { display: flex; gap: 10px; flex-wrap: wrap; }
+  .remote-btn {
+    flex: 1 1 120px; padding: 10px 12px; border-radius: 10px;
+    background: var(--card-alt); border: 1px solid var(--border);
+    color: var(--text); font: inherit; font-size: 13px; font-weight: 500;
+    cursor: pointer; text-align: center; transition: all 0.15s;
+  }
+  .remote-btn:hover { border-color: var(--accent); background: rgba(57, 135, 229, 0.14); }
+  .remote-btn:active { transform: scale(0.97); }
+  .remote-btn small { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+  /* 页面列表 */
+  .page-list { display: flex; flex-direction: column; gap: 10px; }
+  .page-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 12px;
+    background: var(--card-alt); border: 1px solid var(--border);
+    transition: opacity 0.15s, border-color 0.15s, transform 0.12s;
+  }
+  .page-row.off { opacity: 0.52; }
+  .page-row.dragging { opacity: 0.4; border-color: var(--accent); }
+  .page-row.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .handle {
+    cursor: grab; color: var(--muted); font-size: 18px; line-height: 1;
+    user-select: none; padding: 4px 2px;
+  }
+  .order-badge {
+    width: 22px; height: 22px; border-radius: 6px;
+    background: rgba(255,255,255,0.07); color: var(--muted);
+    font-size: 12px; font-weight: 600; display: flex; align-items: center; justify-content: center;
+    flex: none;
+  }
+  .page-info { flex: 1 1 160px; min-width: 120px; }
+  .page-info .nm { font-size: 14px; font-weight: 600; }
+  .page-info .desc { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .dwell-box { display: flex; align-items: center; gap: 6px; flex: none; }
+  .dwell-box label { font-size: 12px; color: var(--muted); }
+  .num-input, .text-input, .select-input {
+    padding: 6px 8px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text); font: inherit; font-size: 13px;
+  }
+  .num-input { width: 74px; text-align: right; font-variant-numeric: tabular-nums; }
+  .text-input { width: 130px; }
+  .select-input { flex: 1 1 200px; min-width: 160px; }
+  .num-input:focus, .text-input:focus, .select-input:focus, .time-input:focus {
+    outline: none; border-color: var(--accent);
+  }
+  .presets { display: flex; gap: 4px; }
+  .preset {
+    padding: 3px 7px; border-radius: 6px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font: inherit; font-size: 11px;
+    cursor: pointer;
+  }
+  .preset:hover, .preset.active { color: var(--text); border-color: var(--accent); background: rgba(57,135,229,0.16); }
+
+  .row-actions { display: flex; align-items: center; gap: 4px; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 7px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--muted); font: inherit; font-size: 13px;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .icon-btn:hover:not(:disabled) { color: var(--text); border-color: rgba(255,255,255,0.22); }
+  .icon-btn.del:hover:not(:disabled) { color: var(--danger); border-color: rgba(239,68,68,0.45); }
+  .icon-btn:disabled { opacity: 0.3; cursor: default; }
+
+  /* Mac 控制页 4x3 预览与列表 */
+  .mac-grid-preview {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px;
+    margin-bottom: 16px;
+  }
+  .mac-cell {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 10px; border-radius: 12px;
+    background: var(--card-alt); border: 1px solid var(--border);
+    position: relative; min-width: 0; overflow: hidden;
+  }
+  .mac-cell.dragging { opacity: 0.4; border-color: var(--accent); }
+  .mac-cell.drag-over { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .mac-cell img { width: 36px; height: 36px; flex: none; border-radius: 8px; }
+  .mac-cell-body { flex: 1 1 auto; min-width: 0; }
+  .mac-cell-body input {
+    width: 100%; background: transparent; border: 1px solid transparent;
+    color: var(--text); font: inherit; font-size: 13px; font-weight: 600;
+    padding: 2px 4px; border-radius: 5px;
+  }
+  .mac-cell-body input:hover, .mac-cell-body input:focus {
+    border-color: var(--border); background: var(--bg); outline: none;
+  }
+  .mac-cell-sub {
+    font-size: 11px; color: var(--muted); padding: 0 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .mac-cell-tools { display: flex; flex-direction: column; gap: 3px; }
+  .mac-cell-tools button {
+    width: 22px; height: 22px; border-radius: 5px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--muted); font-size: 11px; cursor: pointer;
+  }
+  .mac-cell-tools button:hover { color: var(--text); border-color: rgba(255,255,255,0.22); }
+  .mac-cell-tools button.del:hover { color: var(--danger); border-color: rgba(239,68,68,0.45); }
+
+  .add-app-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 12px 14px; border-radius: 12px;
+    background: rgba(255,255,255,0.03); border: 1px dashed rgba(255,255,255,0.14);
+    margin-bottom: 12px;
+  }
+  .add-app-bar label { font-size: 13px; color: var(--muted); }
+
+  /* 开关 */
+  .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider {
+    position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,0.16); border-radius: 999px; transition: 0.18s;
+  }
+  .slider::before {
+    content: ""; position: absolute; height: 18px; width: 18px; left: 3px; bottom: 3px;
+    background: #fff; border-radius: 50%; transition: 0.18s;
+  }
+  .switch input:checked + .slider { background: var(--accent); }
+  .switch input:checked + .slider::before { transform: translateX(18px); }
+
+  /* 通用表单行 */
+  .field-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 0; border-bottom: 1px solid var(--border); gap: 16px;
+  }
+  .field-row:first-of-type { padding-top: 2px; }
+  .field-row:last-of-type { border-bottom: none; padding-bottom: 2px; }
+  .field-meta .lb { font-size: 14px; font-weight: 500; }
+  .field-meta .sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .field-ctrl { display: flex; align-items: center; gap: 8px; flex: none; }
+  .unit { font-size: 12px; color: var(--muted); }
+  .time-input {
+    padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font: inherit; font-size: 13px;
+    color-scheme: dark;
+  }
+
+  /* 底部保存栏 */
+  .footer-bar {
+    position: fixed; left: 0; right: 0; bottom: 0;
+    background: rgba(11, 15, 23, 0.88);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--border);
+    padding: 14px 20px; z-index: 20;
+  }
+  .footer-inner {
+    max-width: 780px; margin: 0 auto;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .status-msg { font-size: 13px; color: var(--muted); }
+  .status-msg.dirty { color: var(--warn); }
+  .status-msg.ok { color: var(--ok); }
+  .status-msg.err { color: var(--danger); }
+  .btn-group { display: flex; gap: 10px; }
+  .btn {
+    padding: 9px 18px; border-radius: 10px; font: inherit; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border); background: var(--card-alt); color: var(--text);
+    transition: all 0.15s;
+  }
+  .btn:hover:not(:disabled) { border-color: rgba(255,255,255,0.22); }
+  .btn:disabled { opacity: 0.4; cursor: default; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
+
+  @media (max-width: 680px) {
+    .mac-grid-preview { grid-template-columns: repeat(2, 1fr); }
+    .page-row { flex-wrap: wrap; }
+    .dwell-box { width: 100%; justify-content: flex-end; padding-top: 6px; border-top: 1px solid var(--border); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title-box">
+      <h1>LX04 状态屏设置</h1>
+      <p>仅限本机访问 · 保存后音箱在 2 秒内自动同步，无需重启或改代码</p>
+    </div>
+    <a class="preview-link" href="/" target="_blank" rel="noopener">打开状态屏预览 ↗</a>
+  </header>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>实时遥控切页</h2>
+      <span>点击后音箱立即跳到对应页面并临时停留</span>
+    </div>
+    <div class="remote-bar" id="remoteBar"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>页面编排与停留时间</h2>
+      <span>拖拽或点 ↑↓ 调整轮播顺序，可单独开关每一页或设停留秒数</span>
+    </div>
+    <div class="page-list" id="pageList"></div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>Mac 控制页程序与音量条</h2>
+      <span id="macCountLabel">最多 12 个按钮（4×3 网格）· 支持拖拽排序、改名、删除与从本机应用添加</span>
+    </div>
+
+    <div class="mac-grid-preview" id="macGrid"></div>
+
+    <div class="add-app-bar">
+      <label for="appSelect">添加程序 / 动作：</label>
+      <select class="select-input" id="appSelect">
+        <option value="">正在扫描本机 Applications…</option>
+      </select>
+      <input type="text" class="text-input" id="customAppName" placeholder="显示名称（可选）" maxlength="20">
+      <button type="button" class="btn primary" id="addAppBtn">+ 添加到控制页</button>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">底部显示音量控制与静音按钮（音量 - / 静音 / 音量 +）</div>
+        <div class="sub">开启后在控制页底部显示一排音量调节与 Mute 按钮（外接 DP/HDMI 显示器无系统音量时自动调 Music 音量）</div>
+      </div>
+      <div class="field-ctrl">
+        <label class="switch"><input type="checkbox" id="macVolumeBar"><span class="slider"></span></label>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>轮播与智能切页策略</h2>
+      <span>控制音箱何时自动翻页、何时停在重要页面</span>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">自动轮播</div>
+        <div class="sub">开启后按上方页面顺序与停留时间循环切换；关闭则固定停在当前页</div>
+      </div>
+      <div class="field-ctrl">
+        <label class="switch"><input type="checkbox" id="rotate"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">等待授权时锁定页面（Your turn 优先）</div>
+        <div class="sub">当 Codex 或 Claude 停下来等你确认或回答问题时，立即切过去并停留</div>
+      </div>
+      <div class="field-ctrl">
+        <label class="switch"><input type="checkbox" id="followUrgent"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">空闲相框模式</div>
+        <div class="sub">两个 Agent 都没任务在跑超过指定时长后，自动停在「相册」页当电子相框</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="number" class="num-input" id="idleSeconds" min="10" max="86400" step="10">
+        <span class="unit">秒</span>
+        <label class="switch"><input type="checkbox" id="idlePhoto"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">任务开跑自动跳回</div>
+        <div class="sub">处于相框模式时，一旦有新任务开始运行，立即跳到对应 Agent 页并恢复轮播</div>
+      </div>
+      <div class="field-ctrl">
+        <label class="switch"><input type="checkbox" id="followWorking"><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">手动操作后钉住时长</div>
+        <div class="sub">在音箱上滑动翻页、点控制按钮或点上方「实时遥控切页」后，暂停自动轮播多久</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="number" class="num-input" id="pinSeconds" min="5" max="3600" step="5">
+        <span class="unit">秒</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <h2>相册与夜间熄屏</h2>
+      <span>配置「照片」图库抽样范围与音箱夜间自动开关屏时段</span>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">相册单张切换间隔</div>
+        <div class="sub">在相册页内每隔多久换下一张照片</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="number" class="num-input" id="slideSeconds" min="3" max="600" step="1">
+        <span class="unit">秒</span>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">相册选取时间范围</div>
+        <div class="sub">从 Mac「照片」图库选取最近几年内包含人物的照片</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="number" class="num-input" id="photoYears" min="0.5" max="30" step="0.5">
+        <span class="unit">年</span>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">每轮随机抽取张数</div>
+        <div class="sub">每 10 分钟或修改此项后从图库重新随机抽取</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="number" class="num-input" id="photoCount" min="10" max="2000" step="10">
+        <span class="unit">张</span>
+      </div>
+    </div>
+
+    <div class="field-row">
+      <div class="field-meta">
+        <div class="lb">夜间自动熄屏</div>
+        <div class="sub">到点自动关屏，次日结束时间自动亮屏并打开状态页（同步至 adb-endpoint.json）</div>
+      </div>
+      <div class="field-ctrl">
+        <input type="time" class="time-input" id="sleepStart" value="23:00">
+        <span class="unit">至</span>
+        <input type="time" class="time-input" id="sleepEnd" value="07:00">
+        <label class="switch"><input type="checkbox" id="sleepOn"><span class="slider"></span></label>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="footer-bar">
+  <div class="footer-inner">
+    <div class="status-msg" id="statusMsg">已加载当前配置</div>
+    <div class="btn-group">
+      <button type="button" class="btn" id="resetBtn">恢复默认</button>
+      <button type="button" class="btn primary" id="saveBtn">保存设置 (⌘S)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PAGE_META = {
+  codex:  { name: 'Codex',     desc: 'Codex 会话状态与 5h / 周剩余额度' },
+  claude: { name: 'Claude',    desc: 'Claude Code 会话状态与已用额度' },
+  sys:    { name: 'Mac 状态',  desc: 'CPU / GPU / 内存 / 网速实时曲线与进程' },
+  mac:    { name: 'Mac 控制',  desc: '熄屏、屏保、防休眠及常用应用启动台' },
+  photo:  { name: '相册',      desc: 'Mac「照片」图库人物照片随机轮播' },
+};
+const PRESETS = [30, 60, 120, 300];
+const MAX_MAC_ITEMS = 12;
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+let state = null;
+let dragIdx = null;
+let macDragIdx = null;
+let catalog = { apps: [], builtins: {} };
+
+function setStatus(text, kind) {
+  const el = $('statusMsg');
+  el.textContent = text;
+  el.className = 'status-msg' + (kind ? ' ' + kind : '');
+}
+
+function markDirty() {
+  setStatus('有未保存的更改，点右下角「保存设置」生效', 'dirty');
+}
+
+function renderRemote() {
+  const bar = $('remoteBar');
+  bar.innerHTML = state.pages.map(p => {
+    const m = PAGE_META[p.id] || { name: p.id, desc: '' };
+    return `<button type="button" class="remote-btn" data-focus="${p.id}">
+      切到 ${m.name}
+      <small>${p.enabled ? '停留 ' + p.dwell + 's' : '当前已隐藏（点击会自动启用）'}</small>
+    </button>`;
+  }).join('');
+}
+
+function ensureOneEnabled(changedIdx) {
+  if (!state.pages.some(p => p.enabled)) {
+    state.pages[changedIdx].enabled = true;
+    setStatus('至少需要保留一个开启的页面', 'err');
+    return false;
+  }
+  return true;
+}
+
+function renderPages() {
+  const list = $('pageList');
+  list.innerHTML = state.pages.map((p, idx) => {
+    const m = PAGE_META[p.id] || { name: p.id, desc: '' };
+    const presets = PRESETS.map(sec =>
+      `<button type="button" class="preset${p.dwell === sec ? ' active' : ''}" data-idx="${idx}" data-sec="${sec}">${sec}s</button>`
+    ).join('');
+    return `
+      <div class="page-row${p.enabled ? '' : ' off'}" draggable="true" data-idx="${idx}">
+        <span class="handle" title="拖拽排序">⋮⋮</span>
+        <span class="order-badge">${idx + 1}</span>
+        <div class="page-info">
+          <div class="nm">${m.name}</div>
+          <div class="desc">${m.desc}</div>
+        </div>
+        <div class="dwell-box">
+          <label>停留</label>
+          <input type="number" class="num-input dwell-input" data-idx="${idx}" min="5" max="3600" step="5" value="${p.dwell}">
+          <span class="unit">秒</span>
+          <div class="presets">${presets}</div>
+        </div>
+        <div class="row-actions">
+          <button type="button" class="icon-btn" data-move="-1" data-idx="${idx}" ${idx === 0 ? 'disabled' : ''} title="上移">↑</button>
+          <button type="button" class="icon-btn" data-move="1" data-idx="${idx}" ${idx === state.pages.length - 1 ? 'disabled' : ''} title="下移">↓</button>
+        </div>
+        <label class="switch" title="启用/隐藏此页">
+          <input type="checkbox" class="page-enable" data-idx="${idx}" ${p.enabled ? 'checked' : ''}>
+          <span class="slider"></span>
+        </label>
+      </div>`;
+  }).join('');
+  renderRemote();
+}
+
+function iconUrlFor(item) {
+  if (item.path) {
+    return '/api/mac/app-icon?path=' + encodeURIComponent(item.path);
+  }
+  return '/icons/' + encodeURIComponent(item.id) + '.png';
+}
+
+function renderMacItems() {
+  const items = state.mac_items || [];
+  $('macCountLabel').textContent = `当前 ${items.length} / ${MAX_MAC_ITEMS} 个按钮（4×3 网格）· 支持拖拽排序、直接点名字改名、删除与添加`;
+  $('macGrid').innerHTML = items.map((it, idx) => {
+    const sub = it.path ? it.path.replace(/^\/Applications\//, '') : '系统内置动作';
+    return `
+      <div class="mac-cell" draggable="true" data-idx="${idx}">
+        <img src="${iconUrlFor(it)}" alt="">
+        <div class="mac-cell-body">
+          <input type="text" class="mac-name-input" data-idx="${idx}" value="${esc(it.name)}" title="点击修改按钮显示名称">
+          <div class="mac-cell-sub" title="${esc(it.path || it.id)}">${esc(sub)}</div>
+        </div>
+        <div class="mac-cell-tools">
+          <button type="button" class="del" data-del="${idx}" title="移除此按钮">✕</button>
+        </div>
+      </div>`;
+  }).join('');
+  renderAppSelect();
+}
+
+function renderAppSelect() {
+  const sel = $('appSelect');
+  const items = state.mac_items || [];
+  const usedIds = new Set(items.map(i => i.id));
+  const usedPaths = new Set(items.filter(i => i.path).map(i => i.path));
+
+  const opts = ['<option value="">选择要添加的本机应用或系统动作…</option>'];
+  const builtinEntries = Object.entries(catalog.builtins || {});
+  const availBuiltins = builtinEntries.filter(([id]) => !usedIds.has(id));
+  if (availBuiltins.length) {
+    opts.push('<optgroup label="系统动作">');
+    availBuiltins.forEach(([id, label]) => {
+      opts.push(`<option value="builtin:${esc(id)}">${esc(label)} (${esc(id)})</option>`);
+    });
+    opts.push('</optgroup>');
+  }
+
+  const availApps = (catalog.apps || []).filter(a => !usedPaths.has(a.path));
+  if (availApps.length) {
+    opts.push('<optgroup label="本机应用程序 (/Applications)">');
+    availApps.forEach(a => {
+      opts.push(`<option value="app:${esc(a.path)}" data-name="${esc(a.name)}" data-id="${esc(a.id)}">${esc(a.name)} — ${esc(a.path)}</option>`);
+    });
+    opts.push('</optgroup>');
+  }
+  sel.innerHTML = opts.join('');
+  $('addAppBtn').disabled = items.length >= MAX_MAC_ITEMS;
+}
+
+function populateForm(cfg) {
+  state = JSON.parse(JSON.stringify(cfg));
+  renderPages();
+  renderMacItems();
+  $('macVolumeBar').checked = state.mac_volume_bar !== false;
+  $('rotate').checked = !!state.rotate;
+  $('followUrgent').checked = state.follow_urgent !== false;
+  $('idlePhoto').checked = state.idle_photo !== false;
+  $('idleSeconds').value = state.idle_seconds || 600;
+  $('followWorking').checked = state.follow_working !== false;
+  $('pinSeconds').value = state.pin_seconds || 60;
+  $('slideSeconds').value = state.slide_seconds || 12;
+  $('photoYears').value = state.photo_years || 2;
+  $('photoCount').value = state.photo_count || 300;
+
+  if (state.sleep && state.sleep !== 'off' && state.sleep.includes('-')) {
+    const [s, e] = state.sleep.split('-');
+    $('sleepOn').checked = true;
+    $('sleepStart').value = s;
+    $('sleepEnd').value = e;
+  } else {
+    $('sleepOn').checked = false;
+  }
+  $('sleepStart').disabled = !$('sleepOn').checked;
+  $('sleepEnd').disabled = !$('sleepOn').checked;
+}
+
+function collectPayload() {
+  const sleepOn = $('sleepOn').checked;
+  const start = $('sleepStart').value || '23:00';
+  const end = $('sleepEnd').value || '07:00';
+  return {
+    pages: state.pages.map(p => ({
+      id: p.id,
+      enabled: !!p.enabled,
+      dwell: Math.max(5, Math.min(3600, parseInt(p.dwell, 10) || 60)),
+    })),
+    mac_items: (state.mac_items || []).map(it => {
+      const out = { id: it.id, name: (it.name || '').trim() || it.id };
+      if (it.path) out.path = it.path;
+      return out;
+    }),
+    mac_volume_bar: $('macVolumeBar').checked,
+    rotate: $('rotate').checked,
+    follow_urgent: $('followUrgent').checked,
+    idle_photo: $('idlePhoto').checked,
+    idle_seconds: parseInt($('idleSeconds').value, 10) || 600,
+    follow_working: $('followWorking').checked,
+    pin_seconds: parseInt($('pinSeconds').value, 10) || 60,
+    slide_seconds: parseInt($('slideSeconds').value, 10) || 12,
+    photo_years: parseFloat($('photoYears').value) || 2,
+    photo_count: parseInt($('photoCount').value, 10) || 300,
+    sleep: sleepOn ? `${start}-${end}` : 'off',
+  };
+}
+
+/* Mac 控制页网格交互 */
+$('macGrid').addEventListener('click', e => {
+  const delBtn = e.target.closest('[data-del]');
+  if (delBtn) {
+    const idx = +delBtn.dataset.del;
+    state.mac_items.splice(idx, 1);
+    renderMacItems();
+    markDirty();
+  }
+});
+
+$('macGrid').addEventListener('input', e => {
+  if (e.target.classList.contains('mac-name-input')) {
+    const idx = +e.target.dataset.idx;
+    state.mac_items[idx].name = e.target.value;
+    markDirty();
+  }
+});
+
+$('macGrid').addEventListener('dragstart', e => {
+  const cell = e.target.closest('.mac-cell');
+  if (!cell) return;
+  macDragIdx = +cell.dataset.idx;
+  cell.classList.add('dragging');
+});
+
+$('macGrid').addEventListener('dragend', e => {
+  const cell = e.target.closest('.mac-cell');
+  if (cell) cell.classList.remove('dragging');
+  document.querySelectorAll('.mac-cell.drag-over').forEach(el => el.classList.remove('drag-over'));
+  macDragIdx = null;
+});
+
+$('macGrid').addEventListener('dragover', e => {
+  e.preventDefault();
+  const cell = e.target.closest('.mac-cell');
+  document.querySelectorAll('.mac-cell.drag-over').forEach(el => {
+    if (el !== cell) el.classList.remove('drag-over');
+  });
+  if (cell && +cell.dataset.idx !== macDragIdx) cell.classList.add('drag-over');
+});
+
+$('macGrid').addEventListener('drop', e => {
+  e.preventDefault();
+  const cell = e.target.closest('.mac-cell');
+  if (!cell || macDragIdx === null) return;
+  const toIdx = +cell.dataset.idx;
+  if (toIdx === macDragIdx) return;
+  const [moved] = state.mac_items.splice(macDragIdx, 1);
+  state.mac_items.splice(toIdx, 0, moved);
+  renderMacItems();
+  markDirty();
+});
+
+$('appSelect').addEventListener('change', () => {
+  const opt = $('appSelect').selectedOptions[0];
+  if (opt && opt.dataset.name && !$('customAppName').value) {
+    $('customAppName').placeholder = `默认：${opt.dataset.name}`;
+  }
+});
+
+$('addAppBtn').addEventListener('click', () => {
+  const val = $('appSelect').value;
+  if (!val) {
+    setStatus('请先从下拉框选择要添加的程序或动作', 'err');
+    return;
+  }
+  if ((state.mac_items || []).length >= MAX_MAC_ITEMS) {
+    setStatus(`控制页最多放置 ${MAX_MAC_ITEMS} 个按钮，请先删除不需要的按钮`, 'err');
+    return;
+  }
+  const custom = $('customAppName').value.trim();
+  if (val.startsWith('builtin:')) {
+    const id = val.slice('builtin:'.length);
+    const name = custom || catalog.builtins[id] || id;
+    state.mac_items.push({ id, name });
+  } else if (val.startsWith('app:')) {
+    const path = val.slice('app:'.length);
+    const app = (catalog.apps || []).find(a => a.path === path);
+    if (!app) return;
+    let id = app.id;
+    const usedIds = new Set(state.mac_items.map(i => i.id));
+    let n = 2;
+    while (usedIds.has(id)) { id = `${app.id}_${n++}`; }
+    state.mac_items.push({
+      id,
+      name: custom || app.name,
+      path: app.path,
+    });
+  }
+  $('customAppName').value = '';
+  $('customAppName').placeholder = '显示名称（可选）';
+  renderMacItems();
+  markDirty();
+});
+
+/* 页面列表交互 */
+$('pageList').addEventListener('click', e => {
+  const preset = e.target.closest('.preset');
+  if (preset) {
+    const idx = +preset.dataset.idx;
+    state.pages[idx].dwell = +preset.dataset.sec;
+    renderPages();
+    markDirty();
+    return;
+  }
+  const moveBtn = e.target.closest('[data-move]');
+  if (moveBtn) {
+    const idx = +moveBtn.dataset.idx, dir = +moveBtn.dataset.move;
+    const target = idx + dir;
+    if (target < 0 || target >= state.pages.length) return;
+    const [item] = state.pages.splice(idx, 1);
+    state.pages.splice(target, 0, item);
+    renderPages();
+    markDirty();
+  }
+});
+
+$('pageList').addEventListener('change', e => {
+  if (e.target.classList.contains('page-enable')) {
+    const idx = +e.target.dataset.idx;
+    state.pages[idx].enabled = e.target.checked;
+    if (ensureOneEnabled(idx)) markDirty();
+    renderPages();
+  } else if (e.target.classList.contains('dwell-input')) {
+    const idx = +e.target.dataset.idx;
+    state.pages[idx].dwell = Math.max(5, Math.min(3600, parseInt(e.target.value, 10) || 60));
+    renderPages();
+    markDirty();
+  }
+});
+
+$('pageList').addEventListener('dragstart', e => {
+  const row = e.target.closest('.page-row');
+  if (!row) return;
+  dragIdx = +row.dataset.idx;
+  row.classList.add('dragging');
+});
+
+$('pageList').addEventListener('dragend', e => {
+  const row = e.target.closest('.page-row');
+  if (row) row.classList.remove('dragging');
+  document.querySelectorAll('.page-row.drag-over').forEach(el => el.classList.remove('drag-over'));
+  dragIdx = null;
+});
+
+$('pageList').addEventListener('dragover', e => {
+  e.preventDefault();
+  const row = e.target.closest('.page-row');
+  document.querySelectorAll('.page-row.drag-over').forEach(el => {
+    if (el !== row) el.classList.remove('drag-over');
+  });
+  if (row && +row.dataset.idx !== dragIdx) row.classList.add('drag-over');
+});
+
+$('pageList').addEventListener('drop', e => {
+  e.preventDefault();
+  const row = e.target.closest('.page-row');
+  if (!row || dragIdx === null) return;
+  const toIdx = +row.dataset.idx;
+  if (toIdx === dragIdx) return;
+  const [moved] = state.pages.splice(dragIdx, 1);
+  state.pages.splice(toIdx, 0, moved);
+  renderPages();
+  markDirty();
+});
+
+$('remoteBar').addEventListener('click', async e => {
+  const btn = e.target.closest('[data-focus]');
+  if (!btn) return;
+  const page = btn.dataset.focus;
+  try {
+    const r = await fetch('/api/focus?page=' + encodeURIComponent(page), {
+      method: 'POST',
+      headers: { 'X-LX04-Action': '1' },
+    });
+    if (!r.ok) throw new Error(r.status);
+    const cfg = await r.json();
+    populateForm(cfg);
+    setStatus(`已发送切页指令：音箱将在 2 秒内切到「${PAGE_META[page].name}」`, 'ok');
+  } catch (err) {
+    setStatus('切页失败：' + err.message, 'err');
+  }
+});
+
+['macVolumeBar', 'rotate', 'followUrgent', 'idlePhoto', 'idleSeconds', 'followWorking',
+ 'pinSeconds', 'slideSeconds', 'photoYears', 'photoCount',
+ 'sleepOn', 'sleepStart', 'sleepEnd'].forEach(id => {
+  $(id).addEventListener('change', () => {
+    $('sleepStart').disabled = !$('sleepOn').checked;
+    $('sleepEnd').disabled = !$('sleepOn').checked;
+    markDirty();
+  });
+});
+
+async function saveSettings() {
+  try {
+    const payload = collectPayload();
+    const r = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-LX04-Action': '1' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error(r.status);
+    const cfg = await r.json();
+    populateForm(cfg);
+    setStatus('已保存，音箱将在 2 秒内自动同步新配置', 'ok');
+  } catch (err) {
+    setStatus('保存失败：' + err.message, 'err');
+  }
+}
+
+$('saveBtn').addEventListener('click', saveSettings);
+
+$('resetBtn').addEventListener('click', async () => {
+  if (!confirm('确定要恢复所有默认设置吗？')) return;
+  try {
+    const r = await fetch('/api/settings?reset=1', {
+      method: 'POST',
+      headers: { 'X-LX04-Action': '1' },
+    });
+    if (!r.ok) throw new Error(r.status);
+    const cfg = await r.json();
+    populateForm(cfg);
+    setStatus('已恢复默认设置', 'ok');
+  } catch (err) {
+    setStatus('恢复默认失败：' + err.message, 'err');
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    saveSettings();
+  }
+});
+
+(async function init() {
+  try {
+    const [rCfg, rApps] = await Promise.all([
+      fetch('/api/settings'),
+      fetch('/api/mac/apps'),
+    ]);
+    if (!rCfg.ok) throw new Error(rCfg.status);
+    if (rApps.ok) catalog = await rApps.json();
+    populateForm(await rCfg.json());
+  } catch (err) {
+    setStatus('加载设置失败：' + err.message, 'err');
+  }
+})();
+</script>
+</body>
+</html>

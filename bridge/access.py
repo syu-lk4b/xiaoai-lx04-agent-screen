@@ -71,3 +71,15 @@ def client_ok(client_ip, local_ip=None):
 
 def allowed(client_ip, host, local_ip=None):
     return host_ok(host) and client_ok(client_ip, local_ip)
+
+
+def mac_only(client_ip, host, local_ip=None):
+    """设置页只给 Mac 本机访问（loopback 或 Mac 自己的网卡地址），音箱与额外放行设备均不可访问。"""
+    if not host_ok(host):
+        return False
+    try:
+        if ipaddress.ip_address(client_ip).is_loopback:
+            return True
+    except ValueError:
+        return False
+    return bool(local_ip and client_ip == local_ip)

@@ -2,202 +2,105 @@
 
 中文 | [English](README.en.md)
 
-把一台闲置的小米小爱触屏音箱，变成桌上的 AI 编码状态屏。
+把刷过机的小米小爱触屏音箱（LX04）变成桌上的 AI 编码状态屏、Mac 性能监控台、应用启动器与电子相框。
 
 ![放在桌上的效果](docs/images/hero.jpg)
 
-Codex 和 Claude 正在干什么、额度还剩多少、哪个任务卡住了需要你回去看一眼——
-抬头一瞥就知道，不用切回终端翻窗口。
-
-## 在上游基础上加了什么
-
-本项目基于 [cenzihao1987-svg/lx04-status-display](https://github.com/cenzihao1987-svg/lx04-status-display)（Codex / Claude 状态页），在它之上增加了三块主要功能：
-
-- **Mac 控制**：一页 12 个图标按钮，在音箱上点一下就能让 Mac 熄屏、开屏保、保持不睡眠，或打开常用应用（音乐、终端、Claude、VS Code、Chrome、微信、Obsidian 等）。只执行白名单里的无害动作，不能跑任意命令；按钮图标直接取自应用本身
-- **Mac 性能监控**：CPU、GPU、内存、网速的实时数值和最近 4 分钟曲线。全部用免授权的系统接口采集，没人看就不采
-- **照片**：直接读 Mac「照片」图库，随机轮播过去两年里有人物的照片，不用再往音箱里导照片。只读、不改图库
-
-| Mac 性能监控 | Mac 控制 | 照片 |
-| --- | --- | --- |
-| ![Mac 性能监控页](docs/images/page-mac-status.jpg) | ![Mac 控制页](docs/images/page-mac-control.jpg) | ![相册页](docs/images/page-photos.jpg) |
-
-还有一些配套改进：
-
-- **相框模式**：两个 agent 都闲了 10 分钟以上，停在相册页；一有任务开跑就跳回对应页面
-- **夜间熄屏**：默认 23:00–07:00 关屏，早上自动亮屏并回到状态页
-- **局域网访问控制**：只有 Mac 自己和音箱能访问，局域网其他设备一律拒绝（照片是家里的）
-- **一键安装**：`./scripts/setup.sh`；README 中英双语
-- 修复 Claude 额度读取：优先读 claude-hud 状态栏插件的缓存
+本项目基于上游 [cenzihao1987-svg/lx04-status-display](https://github.com/cenzihao1987-svg/lx04-status-display)（Codex / Claude 状态页）开发。基础刷机、背景视频转码等通用说明可直接参考上游仓库或 [docs/刷机手册.md](docs/刷机手册.md)、[docs/使用说明.md](docs/使用说明.md)。
 
 ---
 
-## 它长什么样
+## 本仓库新增与改进了什么
 
-左右滑动切换五页：Codex、Claude、Mac 状态、Mac 控制、相册。不碰它时自动轮播——相册页停 5 分钟，其他页各 1 分钟（`?photo=N` / `?rotate=N` 改，单位秒）；有任务在等你授权时停在那一页。Codex 和 Claude 都闲了 10 分钟以上，就停在相册页当相框（`?idle=N` 改，`?idle=0` 关）；一有任务跑起来，跳回那个 agent 的页继续轮播。
-
-**相册页**直接读 Mac 上「照片」App 的图库：从过去两年里随机抽有人物的照片（用「照片」App 自己的人脸识别，排除宠物、背景路人和证件翻拍），每 12 秒换一张，竖图两张并排，裁切时对准人脸。音箱不拉原图：Mac 先用 `sips` 把照片裁成屏幕尺寸（横图 800×480、竖图 400×480，人脸放在窗口上方 40%），经状态页同一条 HTTP 隧道传给音箱，裁好的图会缓存——音箱 GPU 弱，拿到手即用，轮播才不卡。不用再往音箱里导照片。只读，不改图库；只在 iCloud 里、本机没下载的照片会跳过。年数和数量可用环境变量 `LX04_PHOTO_YEARS`（默认 2）、`LX04_PHOTO_COUNT`（默认 300）调整。
-
-**夜里自动熄屏**：默认 23:00–07:00，早上自动亮屏并回到状态页。改时段在 `~/Library/Application Support/lx04-status/adb-endpoint.json` 里加 `"sleep": "23:30-07:00"`，`"off"` 关掉。
+| Mac 性能监控 | Mac 控制（含音量条） | 相册（人物识别） |
+| --- | --- | --- |
+| ![Mac 性能监控页](docs/images/page-mac-status.jpg) | ![Mac 控制页](docs/images/page-mac-control.jpg) | ![相册页](docs/images/page-photos.jpg) |
 
 | Codex | Claude |
 | --- | --- |
 | ![Codex 页](docs/images/page-codex.jpg) | ![Claude 页](docs/images/page-claude.jpg) |
 
-每页从上到下是三块：
+### 1. Mac 本机可视化设置中心（`/setting`）
 
-- **抬头** —— 谁的页面，加当前时间（冒号每秒闪一下，一眼看出屏没死）
-- **额度** —— 两个窗口的用量和下一次重置时间。Codex 显示「还剩多少」，Claude 显示「已用多少」
-- **最近三个会话** —— 项目名、状态、累计耗时。刚完成的会亮一层绿底，持续 10 分钟
+在 Mac 浏览器打开 **`http://127.0.0.1:8477/setting`**，无需改代码或重启服务，保存后音箱在 **2 秒内自动热同步**：
 
-背景是循环播放的视频，不是静态图。
+![设置页](docs/images/page-setting.jpg)
+
+- **实时遥控切页**：在 Mac 上点一下即可让音箱立即跳到指定页面并临时停留
+- **页面编排与停留时间**：拖拽或点 `↑` `↓` 调整五页轮播顺序，单独开关任意页面（如只保留 Codex + 相册），并为每一页独立设置停留秒数
+- **Mac 控制页应用管理**：自动扫描本机 `/Applications`、`/System/Applications`、`~/Applications` 下的全部应用，自由添加、删除、拖拽排序、点击改名（最多 12 个按钮，图标自动从 `.app` 提取缓存）
+- **智能轮播策略开关**：可独立开关「自动轮播」「等待授权时锁定页面（Your turn 优先）」「空闲相框模式」「任务开跑自动跳回」及「手动操作后钉住时长」
+- **相册与夜间熄屏配置**：直接调整相册单张切换间隔、选取年限、每轮抽样张数，以及夜间自动熄屏时段（自动同步至 `adb-endpoint.json`）
+- **仅限 Mac 本机访问**：`/setting` 与 `/api/settings` 经 `access.mac_only` 严格限制仅本机 loopback 或 Mac 自身网卡可访问，音箱端与局域网其他设备访问一律 `403`
+
+### 2. Mac 控制页（应用启动台 + 音量 / Mute 控制）
+
+- **4×3 图标按钮**：一键让 Mac 熄屏、启动屏保、切换 `caffeinate` 防休眠，或打开任意在 `/setting` 中配置的本机应用
+- **底部音量与静音栏**：新增 `音量 -`、`静音 (Mute)`、`音量 +` 三个按钮（可在 `/setting` 开关显示）。优先调节 macOS 系统输出音量；当外接 DisplayPort/HDMI 显示器不支持系统音量调节时，自动回退调节 `Music.app` 音量
+
+### 3. Mac 实时性能监控页
+
+- **实时指标与 4 分钟曲线**：展示 CPU、GPU、内存（按活动监视器口径：App + 联动 + 压缩）、物理网卡上下行网速及高占用进程
+- **零权限、按需采集**：CPU 用 `ctypes` 调 mach `host_statistics`、GPU 读 `ioreg -c IOAccelerator`，无需 `sudo`，无人查看时不采样
+
+### 4. 智能人物相册与空闲相框模式
+
+- **直读 Mac「照片」图库**：只读打开 `Photos.sqlite`，随机抽取过去 N 年里包含真实人物的照片（利用「照片」自带人脸识别与美学评分，自动剔除宠物、背景路人与证件照翻拍）
+- **服务端预裁切对焦人脸**：Mac 用 `sips` 将横图裁成 `800×480`、竖图裁成 `400×480`（两张竖图并排一屏），裁切框自动对准人脸中心，经同一条 HTTP 隧道传给音箱并缓存，减轻音箱弱 GPU 负担
+- **空闲相框模式**：当 Codex 与 Claude 都闲置超过设定时长（默认 10 分钟），自动停在相册页当电子相框；一旦有新任务开始运行，立即跳回对应 Agent 页面
+
+### 5. 其他改进
+
+- **夜间自动熄屏与晨间唤醒**：默认 `23:00–07:00` 自动发 `KEYCODE_SLEEP` 关屏，早上自动唤醒并重开状态页；同一晚若有人手动点亮屏幕不再抢关
+- **局域网访问控制与设备序列号钉死**：仅放行 Mac 本机、已登记序列号（`ro.serialno`）的音箱及 `LX04_CONTROL_ALLOW` 白名单 IP；所有写接口强制校验 `X-LX04-Action: 1` 防跨站请求与 DNS 重绑定
+- **Claude 额度读取修复**：优先读取 `claude-hud` 状态栏插件实时刷新的 `.usage-cache.json`，回退到 Claude Desktop 缓存
+- **一键安装脚本**：`./scripts/setup.sh` 自动完成依赖检查、拉取 `mibe` 并打补丁、跑测试、无线 ADB 连音箱与注册开机自启 LaunchAgent
 
 ---
 
-## 你需要准备
+## 快速开始
 
-**硬件**
-
-- 小米小爱触屏音箱 LX04（闲鱼上很便宜），**必须先刷机**——原系统没有可用的浏览器。刷机步骤见 [docs/刷机手册.md](docs/刷机手册.md)，有变砖风险，自己掂量
-- 一台 Mac，和音箱在同一个 Wi-Fi 下
-
-**软件**
-
-- 你在用 Codex CLI 或者 Claude Code（至少一个，两个都用效果最好）
-- [uv](https://docs.astral.sh/uv/)（`brew install uv`），它会自动准备需要的 Python 3.12
-- Mac 上的 Android Platform Tools（`brew install --cask android-platform-tools`），并已允许 Mac 无线调试 LX04
-- 音箱上装一个能全屏的浏览器，推荐 [Via](https://viayoo.com/)（体积小，能隐藏地址栏）
-
-> 状态屏只读本地文件，不连任何云服务，也不需要小米账号。
-
----
-
-## 跑起来
-
-### 一键安装
+> 音箱首次刷机、安装 Via 浏览器与开启无线 ADB 的步骤请参考上游仓库及 [docs/刷机手册.md](docs/刷机手册.md)。
 
 ```bash
 git clone https://github.com/syu-lk4b/xiaoai-lx04-agent-screen.git
 cd xiaoai-lx04-agent-screen
-./scripts/setup.sh --device 192.168.x.x   # 换成音箱的局域网 IP
+./scripts/setup.sh --device 192.168.x.x   # 换成音箱的局域网 IP（省略则自动扫描网段）
 ```
 
-`setup.sh` 依次做完这些事，每一步打勾，失败会说明原因和怎么修：
+安装完成后：
 
-1. 检查 `git`、`uv`、`adb`、系统 Python
-2. 拉取 [yihong0618/mibe](https://github.com/yihong0618/mibe)（负责盯 Codex 的会话日志）到 `vendor/`，钉在补丁对应的版本上，再打上 `vendor/mibe.patch`
-3. 装 Python 依赖，跑一遍测试
-4. 无线 ADB 连上音箱，确认是 LX04、记住地址、检查 Via 装了没有
-5. 装两个开机自启的 LaunchAgent，等状态服务起来，并在音箱上打开状态页
+- **状态屏预览**：`http://127.0.0.1:8477/`（音箱端 Via 同样打开该地址，由 `adb-bridge` 转发）
+- **Mac 设置页**：`http://127.0.0.1:8477/setting`（仅 Mac 本机可打开）
 
-重复执行是安全的。不知道音箱 IP 就省掉 `--device`，后台代理会自己扫当前网段；只想先在 Mac 上看看效果，加 `--no-agent`，再手动跑 `./scripts/start.sh`。`./scripts/setup.sh --help` 看全部参数。
+常用维护命令：
 
-装好后在 Mac 浏览器打开 `http://127.0.0.1:8477/` 确认能看到画面。音箱上的 Via 打开的是固定地址 `http://127.0.0.1:8477/`——这里的 `127.0.0.1` 指音箱本机，由代理转到 Mac，所以 Mac 的 DHCP 地址变了也不用改音箱。断线恢复时只修代理，页面自己重试，不会刷新整页或新开页签。
-
-代理默认读 Mac 的 Wi-Fi IPv4。Wi-Fi 不在 `en0` 的话，按 [使用说明](docs/使用说明.md#指定-mac-的局域网地址可选) 配置 `mac_ip`。
-
-### 手动安装
-
-想一步步来，`setup.sh` 做的事等价于：
-
-```bash
-git clone https://github.com/yihong0618/mibe.git vendor/mibe
-cd vendor/mibe && git checkout 2c73600 && git apply ../mibe.patch && uv sync && cd ../..
-./scripts/start.sh            # 前台运行，先在 Mac 浏览器确认画面
-./scripts/install-agent.sh    # 装开机自启并在音箱上打开
-```
-
-补丁为状态事件、免音箱登录、播报控制和低占用轮询做了适配，具体内容见 [docs/使用说明.md](docs/使用说明.md) 的「我们改了 mibe 什么」。
-
----
-
-## 让它一直在
-
-`setup.sh` 已经装好了开机自启（单独重装用 `./scripts/install-agent.sh`）。之后：登录 macOS 自动起、进程挂了自动拉起、重启不用管。
-
-| 干什么 | 命令 |
+| 操作 | 命令 |
 | --- | --- |
-| 看日志 | `tail -f ~/Library/Logs/lx04-status.log` |
-| 看 ADB 代理日志 | `tail -f ~/Library/Logs/lx04-adb-bridge.log` |
-| 改完状态代码重启 | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-status` |
-| 重启 ADB 代理 | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-adb-bridge` |
-
-安装脚本会创建状态屏和 ADB 代理两个 LaunchAgent。卸载时需要同时卸载 `com.gerry.lx04-status` 和 `com.gerry.lx04-adb-bridge`。
-
----
-
-## 状态怎么看
-
-| 显示 | 含义 |
-| --- | --- |
-| **Running** | 正在干活 |
-| **Your turn** | 停下来等你——在问问题或请求授权。**这个会橙色呼吸，是最该看的** |
-| Done | 完成。刚完成的 10 分钟内有绿底 |
-| Stopped | 被你中断，或者超过 15 分钟没动静 |
-
-额度数字平时是白的，剩得不多时转橙、见底转红。**平时不喊，喊了才有人听。**
-
-连不上 Mac 时整屏转灰、时钟的冒号停住——一眼能分清是「没任务」还是「断了」。
+| 前台运行（调试） | `./scripts/start.sh` |
+| 重装开机自启 LaunchAgent | `./scripts/install-agent.sh` |
+| 重启状态屏服务 | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-status` |
+| 重启 ADB 代理服务 | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-adb-bridge` |
+| 查看日志 | `tail -f ~/Library/Logs/lx04-status.log ~/Library/Logs/lx04-adb-bridge.log` |
 
 ---
 
-## 换成你自己的背景
-
-默认使用 `display/` 下的 `meili-lite.mp4`（雪山）和 `canyon-lite.mp4`（峡谷）：800×480、12fps、H.264 Baseline、无 B 帧，保持原播放速度以降低解码负担。原来的 `meili.mp4` 和 `canyon.mp4` 仍保留，便于回退。
-
-想换成自己的素材，注意这几条——都是踩出来的：
-
-**尺寸做成 800×480**，和屏幕严格一致。不要指望 `object-fit` 帮你兜底。
-
-**调色烘进视频文件，别用 CSS filter。** 每帧多跑一次色彩矩阵，这台机器的 GPU 扛不住。
-
-**编码用 H.264 Baseline，像素格式 `yuv420p`，建议 12fps、无 B 帧**。保持视频背景时，优先降低解码负担。
-
-**循环必须首尾同帧**，否则每转一圈跳一下。两个办法：正放接倒放（pingpong），或者把开头几帧挪到片尾用溶解接回来。
-
-一条能直接用的命令（按需改 `crop` 取景）：
-
-```bash
-ffmpeg -i 你的素材.mov \
-  -filter_complex "[0:v]fps=12,crop=3600:2160:120:0,scale=800:480,format=yuv420p[v];\
-[v]split[a][b];[b]reverse,trim=start_frame=1,setpts=PTS-STARTPTS[r];[a][r]concat=n=2:v=1[out]" \
-  -map "[out]" -an -c:v libx264 -profile:v baseline -level:v 3.0 -pix_fmt yuv420p \
-  -crf 21 -g 24 -movflags +faststart -y display/你的背景.mp4
-```
-
-然后改 `display/index.html` 里的 `SRC`。
-
-**视频放不出来时会自动退回静态图**（`display/*.jpg`），所以不会黑屏。
-
----
-
-## 它是怎么工作的
+## 架构简述
 
 ```
 ~/.codex/sessions/*.jsonl ──→ mibe 事件跟读 ──┐
 ~/.claude/projects/*.jsonl ─→ claude.py 轮询 ─┤→ AGENTS 字典 → snapshot()
-        （每 2 秒）                            │        ↓
- system.py（CPU/内存/GPU/网速）────────────────┤   HTTP :8477
- photos.py（相册，每 10 分钟重抽）─────────────┘  access.py 校验来源
+ system.py（CPU/内存/GPU/网速）────────────────┤        ↓
+ photos.py（相册，每 10 分钟重抽）─────────────┤   HTTP :8477
+ settings.py（页面编排/控制项/熄屏配置）────────┘  access.py 校验来源（/setting 仅限 Mac）
                                                       ↓
                      adb reverse（USB）或 toybox nc 代理（无线 ADB，走 WiFi）
                                                       ↓
-             音箱 Via 浏览器打开 http://127.0.0.1:8477/（音箱本机 loopback，每 2 秒拉一次）
-
- scripts/adb-bridge.py ←──── ADB（WiFi 或 USB）────→ 音箱：找设备、维持转发、开关屏、打开页面
+             音箱 Via 浏览器打开 http://127.0.0.1:8477/（每 2 秒轮询自动同步状态与配置）
 ```
-
-- **Codex 侧**：mibe 盯 `~/.codex/sessions/` 的事件流
-- **Claude 侧**：`bridge/claude.py` 直接读 `~/.claude/projects/` 的 `.jsonl`；额度来自 claude-hud 状态栏插件的缓存，没有就退到 Claude Desktop 的本地缓存
-- **Mac 状态 / 相册**：`bridge/system.py` 读 CPU、内存、GPU、网速；`bridge/photos.py` 只读「照片」图库
-- **谁能访问**：服务监听局域网，但只放行 Mac 自己、登记过的音箱和 `LX04_CONTROL_ALLOW` 里的地址，局域网其他设备一律 403（相册是家里的照片）。音箱按硬件序列号认，局域网里别的设备冒充不了；换了音箱重跑 `./scripts/setup.sh --device <新IP>`。想在手机上看，把手机 IP 放进环境变量 `LX04_CONTROL_ALLOW`（逗号分隔），前台运行时例如 `LX04_CONTROL_ALLOW=192.168.x.x ./scripts/start.sh`（先停掉自启的服务，否则端口冲突）
-- **页面**：一个 HTML 文件，无框架无构建。因为音箱的 WebView 是 **Chromium 61**（2017 年），`inset`、flex `gap`、`backdrop-filter`、可变字体全都不支持
-
-没有数据库，没有账号体系，重启就是重新读一遍。
 
 ---
 
 ## License
 
-MIT，见 [LICENSE](LICENSE)。
-
-背景视频和图片不适用本许可证，版权归各自作者所有。
+MIT，见 [LICENSE](LICENSE)。背景视频和图片版权归各自作者所有。
