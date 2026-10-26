@@ -639,7 +639,7 @@ function renderPeopleGrid() {
     const id = p.id.toUpperCase();
     const on = selected.has(id);
     const label = p.name ? (p.favorite ? `★ ${p.name}` : p.name) : '未命名人物';
-    const avatarUrl = '/api/photos/person-avatar?id=' + encodeURIComponent(id);
+    const avatarUrl = '/api/photos/person-avatar?id=' + encodeURIComponent(id) + '&v=3';
     return `
       <div class="person-card${on ? ' on' : ''}" data-person="${esc(id)}">
         <img class="person-avatar" src="${avatarUrl}" alt="" onerror="this.style.visibility='hidden'">

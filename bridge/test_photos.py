@@ -28,8 +28,8 @@ def make_library(path):
                          ZOVERALLAESTHETICSCORE real default .5);
     create table ZPERSON (Z_PK integer primary key, ZPERSONUUID text, ZFULLNAME text, ZDISPLAYNAME text,
                           ZTYPE int default 0, ZFACECOUNT int default 10, ZDETECTIONTYPE int default 1,
-                          ZMERGETARGETPERSON int);
-    create table ZFACECROP (Z_PK integer primary key, ZPERSON int, ZRESOURCEDATA blob);
+                          ZMERGETARGETPERSON int, ZKEYFACE int);
+    create table ZFACECROP (Z_PK integer primary key, ZPERSON int, ZFACE int, ZTYPE int default 1, ZRESOURCEDATA blob);
     create table ZDETECTEDFACE (Z_PK integer primary key, ZASSETFORFACE int, ZSIZE real, ZHIDDEN int,
                                 ZDETECTIONTYPE int default 1, ZCENTERX real default .5,
                                 ZCENTERY real default .5, ZPERSONFORFACE int);
@@ -125,7 +125,13 @@ class QueryTests(unittest.TestCase):
         self.assertEqual([p["id"] for p in people], [P % 1, P % 2, P % 3])
         self.assertEqual(people[0]["name"], "家人甲")
         self.assertTrue(people[0]["favorite"])
-        self.assertTrue(photos.person_avatar(P % 1, self.db).startswith(b"\xff\xd8"))
+        # 插入一条 ZTYPE=2（已被用户标记「不是此人」的反例头像），验证不会误取它
+        conn = sqlite3.connect(self.db)
+        conn.execute("insert into ZFACECROP (Z_PK, ZPERSON, ZFACE, ZTYPE, ZRESOURCEDATA) values (2, 1, 2, 2, ?)", (b"\xff\xd8\xff\xe0wrongface",))
+        conn.execute("update ZFACECROP set ZFACE = 1, ZTYPE = 1 where Z_PK = 1")
+        conn.commit()
+        conn.close()
+        self.assertEqual(photos.person_avatar(P % 1, self.db), b"\xff\xd8\xff\xe0fakejpeg")
         self.assertIsNone(photos.person_avatar("invalid-uuid", self.db))
 
     def test_moment_gives_place_and_dates(self):

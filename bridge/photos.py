@@ -182,8 +182,39 @@ def list_people(db_path=None, limit=24):
         conn.close()
 
 
+AVATAR_DIR = Path.home() / "Library" / "Caches" / "lx04-status" / "avatars"
+AVATAR_PX = 128
+_avatar_lock = threading.Lock()
+
+
+def _crop_face_square(src, cx, cy, fsize, out_path):
+    """从源图按人脸中心 (cx, cy, 左下原点) 裁出正方形头像并缩放到 AVATAR_PX。"""
+    w, h = _size(src)
+    fy = 1.0 - cy
+    box = int(round(max(w, h) * max(fsize or 0.08, 0.06) * 2.2))
+    box = max(96, min(box, w, h))
+    x = min(max(int(round(cx * w - box / 2)), 0), w - box)
+    y = min(max(int(round(fy * h - box * 0.46)), 0), h - box)
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    tmp1 = out_path.with_suffix(".tmp1.jpg")
+    tmp2 = out_path.with_suffix(".tmp2.jpg")
+    subprocess.run(
+        ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "92",
+         "-c", str(box), str(box), "--cropOffset", str(y), str(x),
+         str(src), "--out", str(tmp1)],
+        capture_output=True, timeout=TIMEOUT, check=True,
+    )
+    subprocess.run(
+        ["sips", "-s", "format", "jpeg", "-s", "formatOptions", "85",
+         "-z", str(AVATAR_PX), str(AVATAR_PX), str(tmp1), "--out", str(tmp2)],
+        capture_output=True, timeout=TIMEOUT, check=True,
+    )
+    tmp1.unlink(missing_ok=True)
+    tmp2.replace(out_path)
+
+
 def person_avatar(person_uuid, db_path=None):
-    """返回指定人物的 JPEG 头像字节：优先读 ZFACECROP.ZRESOURCEDATA，仅限 Mac 设置页调用。"""
+    """返回指定人物的 JPEG 头像字节：优先从代表照 ZKEYFACE 裁切，回退到已确认属于该人的 ZFACECROP。"""
     if not isinstance(person_uuid, str):
         return None
     u = person_uuid.strip().upper()
@@ -198,12 +229,41 @@ def person_avatar(person_uuid, db_path=None):
     except sqlite3.Error:
         return None
     try:
+        # 1. 优先取「照片」App 里该人物的代表人脸 ZKEYFACE（避免 ZFACECROP 里 ZTYPE=2 的反例把别人的脸张冠李戴）
+        kf = conn.execute(
+            """select f.Z_PK, a.ZUUID, a.ZDIRECTORY, a.ZFILENAME, f.ZCENTERX, f.ZCENTERY, f.ZSIZE
+               from ZPERSON p
+               join ZDETECTEDFACE f on f.Z_PK = p.ZKEYFACE
+               join ZASSET a on a.Z_PK = f.ZASSETFORFACE
+               where upper(p.ZPERSONUUID) = :u""",
+            {"u": u},
+        ).fetchone()
+        if kf:
+            face_pk, auuid, adir, afile, cx, cy, fsize = kf
+            if db_path is None and auuid and cx is not None and cy is not None and (fsize or 0) > 0:
+                src = _source(auuid, adir or "", afile or "")
+                if src:
+                    cache_file = AVATAR_DIR / f"{u}_{face_pk}.jpg"
+                    with _avatar_lock:
+                        try:
+                            if not cache_file.exists():
+                                _crop_face_square(src, cx, cy, fsize, cache_file)
+                            return cache_file.read_bytes()
+                        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+                            print(f"[photos] 裁切头像 {u} 失败：{exc}", file=sys.stderr)
+
+        # 2. 回退到 ZFACECROP：必须满足 f.ZPERSONFORFACE = p.Z_PK（排除 ZTYPE=2 的「不是此人」样本）
         row = conn.execute(
             """select fc.ZRESOURCEDATA
                from ZPERSON p
                join ZFACECROP fc on fc.ZPERSON = p.Z_PK
-               where upper(p.ZPERSONUUID) = :u and fc.ZRESOURCEDATA is not null
-               order by fc.Z_PK desc limit 1""",
+               left join ZDETECTEDFACE f on f.Z_PK = fc.ZFACE
+               where upper(p.ZPERSONUUID) = :u
+                 and fc.ZRESOURCEDATA is not null
+                 and (fc.ZFACE is null or f.ZPERSONFORFACE = p.Z_PK)
+                 and coalesce(fc.ZTYPE, 1) in (1, 5)
+               order by (fc.ZFACE = p.ZKEYFACE) desc, coalesce(f.ZSIZE, 0) desc, fc.Z_PK asc
+               limit 1""",
             {"u": u},
         ).fetchone()
         if row and isinstance(row[0], (bytes, memoryview)) and bytes(row[0]).startswith(b"\xff\xd8"):
