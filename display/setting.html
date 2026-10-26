@@ -169,6 +169,59 @@
   }
   .add-app-bar label { font-size: 13px; color: var(--muted); }
 
+  /* 相册人物选择卡片墙 */
+  .people-box {
+    padding: 14px 0; border-bottom: 1px solid var(--border);
+  }
+  .people-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; flex-wrap: wrap; margin-bottom: 12px;
+  }
+  .people-actions { display: flex; gap: 8px; }
+  .mini-btn {
+    padding: 4px 10px; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--card-alt); color: var(--muted); font: inherit; font-size: 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .mini-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.22); }
+  .people-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;
+  }
+  .person-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 12px;
+    background: var(--card-alt); border: 1px solid var(--border);
+    cursor: pointer; user-select: none; transition: all 0.15s;
+    position: relative; min-width: 0;
+  }
+  .person-card:hover { border-color: rgba(255,255,255,0.22); }
+  .person-card.on {
+    border-color: var(--accent); background: rgba(57, 135, 229, 0.16);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+  .person-avatar {
+    width: 42px; height: 42px; border-radius: 50%; object-fit: cover;
+    background: #243044; flex: none; border: 1px solid rgba(255,255,255,0.12);
+  }
+  .person-info { flex: 1 1 auto; min-width: 0; }
+  .person-name {
+    font-size: 13px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .person-sub { font-size: 11px; color: var(--muted); margin-top: 1px; }
+  .person-check {
+    width: 18px; height: 18px; border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; color: transparent; flex: none;
+  }
+  .person-card.on .person-check {
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  /* ?demo=1 截图脱敏模式：把真实人物头像与姓名强模糊处理 */
+  body.demo .person-avatar { filter: blur(9px); transform: scale(1.08); }
+  body.demo .person-name { filter: blur(6px); user-select: none; }
+
   /* 开关 */
   .switch { position: relative; display: inline-block; width: 42px; height: 24px; flex: none; }
   .switch input { opacity: 0; width: 0; height: 0; }
@@ -351,7 +404,21 @@
   <section class="section">
     <div class="section-head">
       <h2>相册与夜间熄屏</h2>
-      <span>配置「照片」图库抽样范围与音箱夜间自动开关屏时段</span>
+      <span>配置「照片」图库抽样范围、指定家人筛选与音箱夜间自动开关屏时段</span>
+    </div>
+
+    <div class="people-box">
+      <div class="people-head">
+        <div class="field-meta">
+          <div class="lb" id="peopleTitle">只显示指定家人 / 人物（可选）</div>
+          <div class="sub">从「照片 → 人物」中选择家人：勾选后相册只轮播包含这些人物的照片并对焦他们；全不选则显示所有人物照</div>
+        </div>
+        <div class="people-actions">
+          <button type="button" class="mini-btn" id="selectNamedBtn">全选已命名家人</button>
+          <button type="button" class="mini-btn" id="clearPeopleBtn">全部不选（显示所有人）</button>
+        </div>
+      </div>
+      <div class="people-grid" id="peopleGrid"></div>
     </div>
 
     <div class="field-row">
@@ -423,12 +490,14 @@ const PAGE_META = {
 const PRESETS = [30, 60, 120, 300];
 const MAX_MAC_ITEMS = 12;
 const $ = id => document.getElementById(id);
+if (/[?&]demo=1(?:&|$)/.test(location.search)) document.body.classList.add('demo');
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
 let state = null;
 let dragIdx = null;
 let macDragIdx = null;
 let catalog = { apps: [], builtins: {} };
+let peopleCatalog = [];
 
 function setStatus(text, kind) {
   const el = $('statusMsg');
@@ -550,10 +619,45 @@ function renderAppSelect() {
   $('addAppBtn').disabled = items.length >= MAX_MAC_ITEMS;
 }
 
+function renderPeopleGrid() {
+  const grid = $('peopleGrid');
+  const demo = /[?&]demo=1(?:&|$)/.test(location.search);
+  const selected = new Set((state.photo_people || []).map(u => u.toUpperCase()));
+  if (demo && !selected.size) {
+    peopleCatalog.slice(0, 4).forEach(p => selected.add(p.id.toUpperCase()));
+  }
+  const count = selected.size;
+  $('peopleTitle').textContent = count > 0
+    ? `只显示指定家人 / 人物（已勾选 ${count} 人）`
+    : '只显示指定家人 / 人物（当前未限制，显示全部人物照）';
+
+  if (!peopleCatalog.length) {
+    grid.innerHTML = '<div style="font-size:12px;color:var(--muted)">图库中暂未识别到人物数据</div>';
+    return;
+  }
+  grid.innerHTML = peopleCatalog.map(p => {
+    const id = p.id.toUpperCase();
+    const on = selected.has(id);
+    const label = p.name ? (p.favorite ? `★ ${p.name}` : p.name) : '未命名人物';
+    const avatarUrl = '/api/photos/person-avatar?id=' + encodeURIComponent(id);
+    return `
+      <div class="person-card${on ? ' on' : ''}" data-person="${esc(id)}">
+        <img class="person-avatar" src="${avatarUrl}" alt="" onerror="this.style.visibility='hidden'">
+        <div class="person-info">
+          <div class="person-name" title="${esc(label)}">${esc(label)}</div>
+          <div class="person-sub">${p.count} 张照片</div>
+        </div>
+        <div class="person-check">✓</div>
+      </div>`;
+  }).join('');
+}
+
 function populateForm(cfg) {
   state = JSON.parse(JSON.stringify(cfg));
+  if (!Array.isArray(state.photo_people)) state.photo_people = [];
   renderPages();
   renderMacItems();
+  renderPeopleGrid();
   $('macVolumeBar').checked = state.mac_volume_bar !== false;
   $('rotate').checked = !!state.rotate;
   $('followUrgent').checked = state.follow_urgent !== false;
@@ -602,9 +706,39 @@ function collectPayload() {
     slide_seconds: parseInt($('slideSeconds').value, 10) || 12,
     photo_years: parseFloat($('photoYears').value) || 2,
     photo_count: parseInt($('photoCount').value, 10) || 300,
+    photo_people: state.photo_people || [],
     sleep: sleepOn ? `${start}-${end}` : 'off',
   };
 }
+
+/* 相册人物选择交互 */
+$('peopleGrid').addEventListener('click', e => {
+  const card = e.target.closest('[data-person]');
+  if (!card) return;
+  const id = card.dataset.person.toUpperCase();
+  const list = state.photo_people || [];
+  const idx = list.findIndex(u => u.toUpperCase() === id);
+  if (idx >= 0) {
+    list.splice(idx, 1);
+  } else {
+    list.push(id);
+  }
+  state.photo_people = list;
+  renderPeopleGrid();
+  markDirty();
+});
+
+$('selectNamedBtn').addEventListener('click', () => {
+  state.photo_people = peopleCatalog.filter(p => p.name).map(p => p.id.toUpperCase());
+  renderPeopleGrid();
+  markDirty();
+});
+
+$('clearPeopleBtn').addEventListener('click', () => {
+  state.photo_people = [];
+  renderPeopleGrid();
+  markDirty();
+});
 
 /* Mac 控制页网格交互 */
 $('macGrid').addEventListener('click', e => {
@@ -845,12 +979,17 @@ document.addEventListener('keydown', e => {
 
 (async function init() {
   try {
-    const [rCfg, rApps] = await Promise.all([
+    const [rCfg, rApps, rPeople] = await Promise.all([
       fetch('/api/settings'),
       fetch('/api/mac/apps'),
+      fetch('/api/photos/people'),
     ]);
     if (!rCfg.ok) throw new Error(rCfg.status);
     if (rApps.ok) catalog = await rApps.json();
+    if (rPeople.ok) {
+      const pData = await rPeople.json();
+      peopleCatalog = pData.people || [];
+    }
     populateForm(await rCfg.json());
   } catch (err) {
     setStatus('加载设置失败：' + err.message, 'err');

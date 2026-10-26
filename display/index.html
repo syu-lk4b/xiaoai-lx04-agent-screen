@@ -870,7 +870,7 @@ function applySettings(s) {
     }
   }
 
-  const pKey = (s.photo_years || 2) + ':' + (s.photo_count || 300);
+  const pKey = (s.photo_years || 2) + ':' + (s.photo_count || 300) + ':' + ((s.photo_people || []).join(','));
   if (photoCfgKey !== null && photoCfgKey !== pKey) loadAlbum();
   photoCfgKey = pKey;
 

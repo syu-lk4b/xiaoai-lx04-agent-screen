@@ -11,6 +11,7 @@ from pathlib import Path
 import photos
 
 U = "AC6664E7-D9F2-43CA-89A7-DC39EACCB2%02d"
+P = "000E78F3-5D1F-4524-9628-EC2939E00A%02d"
 
 
 NOW = 900000000 + photos.EPOCH  # 测试里的「现在」：Core Data 时间 900000000
@@ -25,10 +26,20 @@ def make_library(path):
                          ZWIDTH int, ZHEIGHT int, ZDATECREATED real, ZKIND int, ZHIDDEN int,
                          ZTRASHEDSTATE int, ZISDETECTEDSCREENSHOT int, ZMOMENT int,
                          ZOVERALLAESTHETICSCORE real default .5);
+    create table ZPERSON (Z_PK integer primary key, ZPERSONUUID text, ZFULLNAME text, ZDISPLAYNAME text,
+                          ZTYPE int default 0, ZFACECOUNT int default 10, ZDETECTIONTYPE int default 1,
+                          ZMERGETARGETPERSON int);
+    create table ZFACECROP (Z_PK integer primary key, ZPERSON int, ZRESOURCEDATA blob);
     create table ZDETECTEDFACE (Z_PK integer primary key, ZASSETFORFACE int, ZSIZE real, ZHIDDEN int,
                                 ZDETECTIONTYPE int default 1, ZCENTERX real default .5,
-                                ZCENTERY real default .5);
+                                ZCENTERY real default .5, ZPERSONFORFACE int);
     """)
+    conn.executemany("insert into ZPERSON (Z_PK, ZPERSONUUID, ZFULLNAME, ZTYPE, ZFACECOUNT) values (?,?,?,?,?)", [
+        (1, P % 1, "家人甲", 1, 500),
+        (2, P % 2, "家人乙", 0, 200),
+        (3, P % 3, None, 0, 50),
+    ])
+    conn.execute("insert into ZFACECROP (Z_PK, ZPERSON, ZRESOURCEDATA) values (1, 1, ?)", (b"\xff\xd8\xff\xe0fakejpeg",))
     conn.executemany("insert into ZMOMENT values (?,?,?,?)", [
         (1, "Los Angeles", 899000000, 899100000),
         (2, None, 880000000, 880000500),             # 没标题的时刻
@@ -60,12 +71,16 @@ def make_library(path):
     faces = [(pk, .2, 0) for pk in (1, 2, 3, 4, 5, 6, 7, 11, 12, 14, 15)]
     faces += [(8, .01, 0), (9, .3, 1)]
     conn.executemany("insert into ZDETECTEDFACE (ZASSETFORFACE, ZSIZE, ZHIDDEN) values (?,?,?)", faces)
+    # 资产 1 属于家人甲（person 1），资产 2 属于家人乙（person 2），资产 3 属于未命名路人（person 3）
+    conn.execute("update ZDETECTEDFACE set ZPERSONFORFACE = 1 where ZASSETFORFACE = 1")
+    conn.execute("update ZDETECTEDFACE set ZPERSONFORFACE = 2 where ZASSETFORFACE = 2")
+    conn.execute("update ZDETECTEDFACE set ZPERSONFORFACE = 3 where ZASSETFORFACE = 3")
     conn.executemany(
-        "insert into ZDETECTEDFACE (ZASSETFORFACE, ZSIZE, ZHIDDEN, ZDETECTIONTYPE, ZCENTERX, ZCENTERY) "
-        "values (?,?,?,?,?,?)", [
-            (1, .01, 0, 1, .9, .1),    # 背景小脸：不参与对焦
-            (1, .2, 0, 1, .1, .9),     # 和上面默认居中的那张一起：对焦点是两张大脸的加权中心
-            (13, .3, 0, 3, .5, .5),
+        "insert into ZDETECTEDFACE (ZASSETFORFACE, ZSIZE, ZHIDDEN, ZDETECTIONTYPE, ZCENTERX, ZCENTERY, ZPERSONFORFACE) "
+        "values (?,?,?,?,?,?,?)", [
+            (1, .01, 0, 1, .9, .1, 1),    # 背景小脸：不参与对焦
+            (1, .2, 0, 1, .1, .9, 2),     # 同一张照片里的家人乙：不选家人时两张脸一起对焦，只选家人甲时只对焦家人甲
+            (13, .3, 0, 3, .5, .5, None),
         ])
     conn.commit()
     conn.close()
@@ -94,6 +109,24 @@ class QueryTests(unittest.TestCase):
         self.assertAlmostEqual(focus[U % 1][0], .3)
         self.assertAlmostEqual(focus[U % 1][1], .3)
         self.assertEqual(focus[U % 2], (.5, .5))
+
+    def test_filter_by_selected_family_people_and_focus_only_on_them(self):
+        # 只选家人甲（P%1）：只返回 U%1，且对焦点只对准家人甲 (.5, .5)，忽略旁边的其他人 (.1, .9)
+        r = photos.query(self.db, people=[P % 1], now=NOW)
+        self.assertEqual([p["id"] for p in r["photos"]], [U % 1])
+        self.assertEqual(r["photos"][0]["_focus"], (.5, .5))
+
+        # 选家人甲 + 家人乙：返回 U%1 和 U%2，排除路人 U%3
+        r2 = photos.query(self.db, people=[P % 1, P % 2], now=NOW)
+        self.assertEqual({p["id"] for p in r2["photos"]}, {U % 1, U % 2})
+
+    def test_list_people_and_avatar(self):
+        people = photos.list_people(self.db)
+        self.assertEqual([p["id"] for p in people], [P % 1, P % 2, P % 3])
+        self.assertEqual(people[0]["name"], "家人甲")
+        self.assertTrue(people[0]["favorite"])
+        self.assertTrue(photos.person_avatar(P % 1, self.db).startswith(b"\xff\xd8"))
+        self.assertIsNone(photos.person_avatar("invalid-uuid", self.db))
 
     def test_moment_gives_place_and_dates(self):
         r = photos.query(self.db, now=NOW)

@@ -506,6 +506,22 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self._send(body, "image/png", cache="max-age=86400")
             return
+        if path == "/api/photos/people":
+            if not self._permitted(mac_only=True):
+                return
+            body = json.dumps({"people": photos.list_people()}, ensure_ascii=False).encode()
+            self._send(body, "application/json; charset=utf-8")
+            return
+        if path == "/api/photos/person-avatar":
+            if not self._permitted(mac_only=True):
+                return
+            pid = parse_qs(urlparse(self.path).query).get("id", [""])[0]
+            body = photos.person_avatar(pid)
+            if body is None:
+                self.send_error(404)
+            else:
+                self._send(body, "image/jpeg", cache="max-age=86400")
+            return
         if not self._permitted():
             return
         if path.startswith("/icons/") and path.endswith(".png"):
@@ -525,7 +541,11 @@ class Handler(BaseHTTPRequestHandler):
             # 单独一个接口，不进 /api/status：列表十分钟才变，没必要两秒一传
             cfg = settings.read()
             body = json.dumps(
-                photos.read(years=cfg["photo_years"], count=cfg["photo_count"]),
+                photos.read(
+                    years=cfg["photo_years"],
+                    count=cfg["photo_count"],
+                    people=cfg.get("photo_people"),
+                ),
                 ensure_ascii=False,
             ).encode()
             self._send(body, "application/json; charset=utf-8")

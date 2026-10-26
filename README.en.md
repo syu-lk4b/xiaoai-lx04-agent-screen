@@ -30,7 +30,7 @@ Open **`http://127.0.0.1:8477/setting`** on your Mac to configure the speaker in
 - **Page Order, Visibility & Dwell Time**: drag-and-drop or use `↑` `↓` to reorder the 5 pages, toggle individual pages on/off, and set per-page dwell durations
 - **Customizable Mac Control Apps**: automatically scans `/Applications`, `/System/Applications`, and `~/Applications` so you can add, remove, rename, and drag-reorder up to 12 apps or built-in actions (icons are extracted and cached automatically from `.app` bundles)
 - **Rotation & Smart Follow Policies**: toggle auto-rotation, lock on `NeedsApproval` ("Your turn"), idle photo-frame mode, auto-return when a task starts, and manual pin duration
-- **Photos & Night Screen-Off Schedule**: configure slideshow intervals, photo library year range, sample count, and night sleep/wake hours (synced automatically to `adb-endpoint.json`)
+- **Photos & Night Screen-Off Schedule**: pick specific family members from a visual face-avatar grid in `/setting` so the slideshow only shows photos of your family (and centers crops on them), plus configure slideshow intervals, year range, sample count, and night sleep/wake hours (synced automatically to `adb-endpoint.json`)
 - **Strict Mac-Only Access**: `/setting` and `/api/settings` are guarded by `access.mac_only` — only loopback and the Mac's own NIC IP are allowed; the speaker and other LAN devices receive `403`
 
 ### 2. Mac Controls Page (App Launcher + Volume / Mute Bar)
@@ -45,8 +45,11 @@ Open **`http://127.0.0.1:8477/setting`** on your Mac to configure the speaker in
 
 ### 4. Smart People Photos & Idle Photo-Frame Mode
 
-- **Direct macOS Photos Library Integration**: opens `Photos.sqlite` read-only (`mode=ro`) and randomly selects photos with people from the past N years (using Photos' built-in face detection and aesthetic scores to filter out pets, background passersby, and scanned ID documents)
-- **Server-Side Face-Aware Cropping**: crops landscape photos to `800×480` and portrait photos to `400×480` (paired side-by-side) centered on detected faces via `sips`, caching results so the speaker's weak GPU stays smooth
+![Family people filter in settings](docs/images/page-setting-people.jpg)
+
+- **Family Member Filter (Exclude Strangers)**: reads recognized people and face thumbnails (`ZPERSON` + `ZFACECROP`) directly from your macOS Photos library and displays an avatar wall in `/setting`. Select specific family members (or click "Select all named people") so the slideshow **only shows photos containing your family**, filtering out coworkers, event crowds, and strangers
+- **Server-Side Face-Aware Cropping Focused on Family**: crops landscape photos to `800×480` and portrait photos to `400×480` (paired side-by-side) centered specifically on your selected family members' faces via `sips` (ignoring passersby in the same frame), caching results so the speaker's weak GPU stays smooth
+- **Automatic Quality Filtering**: opens `Photos.sqlite` read-only (`mode=ro`) and uses face size (`ZSIZE ≥ 5%`) and aesthetic scores (`ZOVERALLAESTHETICSCORE ≥ 0.3`) to skip pets, tiny background faces, and scanned ID documents
 - **Idle Photo-Frame Mode**: parks on the Photos page when both Codex and Claude have been idle for the configured threshold (default 10 minutes), and jumps back as soon as a new task starts
 
 ### 5. Additional Improvements
