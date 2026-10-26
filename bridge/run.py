@@ -520,7 +520,7 @@ class Handler(BaseHTTPRequestHandler):
             if body is None:
                 self.send_error(404)
             else:
-                self._send(body, "image/jpeg", cache="max-age=86400")
+                self._send(body, "image/jpeg", cache="no-store")
             return
         if not self._permitted():
             return
