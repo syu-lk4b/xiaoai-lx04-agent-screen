@@ -102,7 +102,7 @@ class SettingsTests(unittest.TestCase):
         self.assertEqual(self.settings_file.stat().st_mode & 0o777, 0o600)
 
     def test_photo_people_validates_uuids(self):
-        u1 = "000e78f3-5d1f-4524-9628-ec2939e00a25"
+        u1 = "11111111-2222-3333-4444-555555555501"
         cfg = settings.save({"photo_people": [u1, u1.upper(), "not-a-uuid", 123]})
         self.assertEqual(cfg["photo_people"], [u1.upper()])
 
