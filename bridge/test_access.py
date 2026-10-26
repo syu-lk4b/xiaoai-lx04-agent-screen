@@ -68,6 +68,15 @@ class ClientTests(unittest.TestCase):
     def test_garbage_ip_rejected(self):
         self.assertFalse(access.allowed("not-an-ip", HOST))
 
+    def test_mac_only_rejects_speaker_and_env_allowlist(self):
+        self.assertTrue(access.mac_only("127.0.0.1", HOST))
+        self.assertTrue(access.mac_only("::1", "localhost:8477"))
+        self.assertTrue(access.mac_only(MAC_IP, f"{MAC_IP}:8477", local_ip=MAC_IP))
+        # 已登记音箱与额外放行设备能看状态页，但不能进 /setting
+        self.assertFalse(access.mac_only("192.168.1.50", HOST, local_ip=MAC_IP))
+        with patch.dict("os.environ", {"LX04_CONTROL_ALLOW": "10.0.0.10"}):
+            self.assertFalse(access.mac_only("10.0.0.10", HOST, local_ip=MAC_IP))
+
 
 if __name__ == "__main__":
     unittest.main()

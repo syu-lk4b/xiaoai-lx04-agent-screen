@@ -2,202 +2,105 @@
 
 [中文](README.md) | English
 
-Turn an idle Xiaomi Xiao AI touchscreen speaker (LX04) into a desk status display for AI coding agents.
+Turn a flashed Xiaomi Xiao AI touchscreen speaker (LX04) into a desk status display for AI coding agents, a live Mac performance monitor, an app launcher, and a smart photo frame.
 
 ![On the desk](docs/images/hero.jpg)
 
-What Codex and Claude are doing, how much quota is left, which task is stuck waiting for you —
-one glance tells you, no need to switch back to the terminal and dig through windows.
-
-## What this fork adds
-
-This project builds on [cenzihao1987-svg/lx04-status-display](https://github.com/cenzihao1987-svg/lx04-status-display) (the Codex / Claude status pages) and adds three main features:
-
-- **Mac controls**: a page of 12 icon buttons — tap to put the Mac's display to sleep, start the screen saver, keep it awake, or open everyday apps (Music, terminals, Claude, VS Code, Chrome, WeChat, Obsidian, and more). Only whitelisted, harmless actions run — never arbitrary commands; button icons come straight from the apps themselves
-- **Mac performance monitoring**: live CPU, GPU, memory, and network throughput with charts of the last 4 minutes. Everything is collected through system interfaces that need no extra permissions, and nothing is sampled while nobody is looking
-- **Photos**: shows a random slideshow of photos with people in them from the past two years of your macOS Photos library — no more copying photos onto the device. Read-only; the library is never modified
-
-| Mac performance | Mac controls | Photos |
-| --- | --- | --- |
-| ![Mac Status page](docs/images/page-mac-status.jpg) | ![Mac Controls page](docs/images/page-mac-control.jpg) | ![Photos page](docs/images/page-photos.jpg) |
-
-Plus some supporting improvements:
-
-- **Photo-frame mode**: once both agents have been idle for 10 minutes, it parks on the Photos page; as soon as a task starts, it jumps back to that agent's page
-- **Night screen-off**: the screen turns off 23:00–07:00 by default and wakes back to the status page in the morning
-- **LAN access control**: only the Mac itself and the speaker can connect; every other device on the LAN is refused (they're family photos)
-- **One-command install**: `./scripts/setup.sh`; README in Chinese and English
-- Fixed Claude quota reading: prefers the claude-hud statusline plugin's cache
+This repository builds on upstream [cenzihao1987-svg/lx04-status-display](https://github.com/cenzihao1987-svg/lx04-status-display) (Codex / Claude status pages). For initial device flashing, browser setup, or custom video encoding, refer to the upstream repository or [docs/刷机手册.md](docs/刷机手册.md) and [docs/使用说明.md](docs/使用说明.md).
 
 ---
 
-## What it looks like
+## What This Fork Adds & Improves
 
-Swipe left and right between five pages: Codex, Claude, Mac Status, Mac Controls, and Photos. Left alone, it rotates on its own — the Photos page stays 5 minutes, every other page 1 minute (change with `?photo=N` / `?rotate=N`, in seconds). When a task is waiting for your approval, it stays on that page. Once neither Codex nor Claude has been busy for 10 minutes, it parks on the Photos page as a photo frame (`?idle=N` to change, `?idle=0` to turn off); as soon as a task starts running, it jumps back to that agent's page and resumes rotating.
-
-**The Photos page** reads the macOS Photos library directly: a random pick of photos with people in them from the past two years (using Photos' own face detection, skipping pets, strangers in the background and photos of ID documents), changing every 12 seconds, with portrait photos shown in pairs and crops centered on faces. The speaker never pulls the originals: the Mac first crops each photo to screen size with `sips` (800×480 landscape, 400×480 portrait, face placed in the upper 40% of the frame), then sends it over the same HTTP tunnel as the status page, caching the result — the speaker's weak GPU just has to display what it gets, which is what keeps the slideshow smooth. No more copying photos onto the speaker. Read-only — the library is never modified; photos that live only in iCloud and aren't downloaded to this Mac are skipped. Tune with `LX04_PHOTO_YEARS` (default 2) and `LX04_PHOTO_COUNT` (default 300).
-
-**Screen off at night**: 23:00–07:00 by default; in the morning the screen wakes and returns to the status page. To change the window, add `"sleep": "23:30-07:00"` to `~/Library/Application Support/lx04-status/adb-endpoint.json`, or `"off"` to disable.
+| Mac Performance | Mac Controls (with Volume Bar) | Smart Photos |
+| --- | --- | --- |
+| ![Mac Status page](docs/images/page-mac-status.jpg) | ![Mac Controls page](docs/images/page-mac-control.jpg) | ![Photos page](docs/images/page-photos.jpg) |
 
 | Codex | Claude |
 | --- | --- |
 | ![Codex page](docs/images/page-codex.jpg) | ![Claude page](docs/images/page-claude.jpg) |
 
-Each agent page has three blocks, top to bottom:
+### 1. Mac-Only Web Settings Center (`/setting`)
 
-- **Header** — whose page it is, plus the current time (the colon blinks every second, so you can tell the screen isn't frozen)
-- **Quota** — usage in both windows and the next reset time. Codex shows what's *left*, Claude shows what's *used*
-- **Last three sessions** — project name, state, and total time. Just-finished sessions get a green tint for 10 minutes
+Open **`http://127.0.0.1:8477/setting`** on your Mac to configure the speaker in real time — no code edits or service restarts needed. Changes sync to the speaker within **2 seconds**:
 
-The background is a looping video, not a still image.
+![Settings page](docs/images/page-setting.jpg)
+
+- **Live Remote Page Switcher**: click any page button on your Mac to immediately jump the speaker to that page
+- **Page Order, Visibility & Dwell Time**: drag-and-drop or use `↑` `↓` to reorder the 5 pages, toggle individual pages on/off, and set per-page dwell durations
+- **Customizable Mac Control Apps**: automatically scans `/Applications`, `/System/Applications`, and `~/Applications` so you can add, remove, rename, and drag-reorder up to 12 apps or built-in actions (icons are extracted and cached automatically from `.app` bundles)
+- **Rotation & Smart Follow Policies**: toggle auto-rotation, lock on `NeedsApproval` ("Your turn"), idle photo-frame mode, auto-return when a task starts, and manual pin duration
+- **Photos & Night Screen-Off Schedule**: configure slideshow intervals, photo library year range, sample count, and night sleep/wake hours (synced automatically to `adb-endpoint.json`)
+- **Strict Mac-Only Access**: `/setting` and `/api/settings` are guarded by `access.mac_only` — only loopback and the Mac's own NIC IP are allowed; the speaker and other LAN devices receive `403`
+
+### 2. Mac Controls Page (App Launcher + Volume / Mute Bar)
+
+- **4×3 Icon Grid**: put the Mac's display to sleep, launch the screen saver, toggle `caffeinate` keep-awake, or open any app configured in `/setting`
+- **Bottom Volume & Mute Bar**: dedicated `Volume -`, `Mute`, and `Volume +` pill buttons at the bottom of the Control page (can be toggled in `/setting`). Controls macOS system output volume first, and automatically falls back to `Music.app` volume when an external DisplayPort/HDMI monitor does not expose system volume controls
+
+### 3. Live Mac Performance Monitor
+
+- **Real-Time Metrics & 4-Minute Charts**: CPU, GPU, memory (matching Activity Monitor: App + Wired + Compressed), physical NIC network throughput, and top CPU processes
+- **Zero Permissions & Lazy Sampling**: reads CPU ticks via `ctypes` mach `host_statistics` and GPU utilization via `ioreg -c IOAccelerator` — no `sudo` required, and nothing is sampled when nobody is viewing
+
+### 4. Smart People Photos & Idle Photo-Frame Mode
+
+- **Direct macOS Photos Library Integration**: opens `Photos.sqlite` read-only (`mode=ro`) and randomly selects photos with people from the past N years (using Photos' built-in face detection and aesthetic scores to filter out pets, background passersby, and scanned ID documents)
+- **Server-Side Face-Aware Cropping**: crops landscape photos to `800×480` and portrait photos to `400×480` (paired side-by-side) centered on detected faces via `sips`, caching results so the speaker's weak GPU stays smooth
+- **Idle Photo-Frame Mode**: parks on the Photos page when both Codex and Claude have been idle for the configured threshold (default 10 minutes), and jumps back as soon as a new task starts
+
+### 5. Additional Improvements
+
+- **Night Screen-Off & Morning Wake**: sends `KEYCODE_SLEEP` at night (default `23:00–07:00`) and wakes the screen back to the status page in the morning; sleeps at most once per boot so manual wake-ups at night are respected
+- **LAN Access Control & Hardware Serial Pinning**: only the Mac itself, the speaker pinned by hardware `ro.serialno`, and IPs in `LX04_CONTROL_ALLOW` can connect; all write endpoints require `X-LX04-Action: 1` and validate the `Host` header against DNS rebinding
+- **Fixed Claude Quota Reading**: reads live usage from the `claude-hud` statusline plugin cache (`.usage-cache.json`) first, falling back to Claude Desktop's local cache
+- **One-Command Setup**: `./scripts/setup.sh` checks dependencies, clones and patches `mibe`, runs unit tests, pairs with the speaker over wireless ADB, and installs login LaunchAgents
 
 ---
 
-## What you need
+## Quick Start
 
-**Hardware**
-
-- A Xiaomi Xiao AI touchscreen speaker LX04 (cheap second-hand). **It must be flashed first** — the stock system has no usable browser. Flashing steps are in [docs/刷机手册.md](docs/刷机手册.md) (Chinese). There is a risk of bricking it; decide for yourself
-- A Mac on the same Wi-Fi as the speaker
-
-**Software**
-
-- Codex CLI or Claude Code (at least one; both is best)
-- [uv](https://docs.astral.sh/uv/) (`brew install uv`) — it fetches the Python 3.12 that's needed
-- Android Platform Tools on the Mac (`brew install --cask android-platform-tools`), with wireless debugging of the LX04 allowed from the Mac
-- A browser on the speaker that can go full screen. [Via](https://viayoo.com/) is recommended (tiny, can hide the address bar)
-
-> The status display only reads local files. It connects to no cloud service and needs no Xiaomi account.
-
----
-
-## Getting it running
-
-### One-command install
+> For first-time speaker flashing, installing the Via browser, and enabling wireless ADB, see the upstream repository and [docs/刷机手册.md](docs/刷机手册.md).
 
 ```bash
 git clone https://github.com/syu-lk4b/xiaoai-lx04-agent-screen.git
 cd xiaoai-lx04-agent-screen
-./scripts/setup.sh --device 192.168.x.x   # the speaker's LAN IP
+./scripts/setup.sh --device 192.168.x.x   # speaker LAN IP (omit to auto-scan subnet)
 ```
 
-`setup.sh` does the following in order, ticking off each step; when something fails it says why and how to fix it:
+Once installed:
 
-1. Checks for `git`, `uv`, `adb`, and the system Python
-2. Clones [yihong0618/mibe](https://github.com/yihong0618/mibe) (it follows Codex's session logs) into `vendor/`, pinned to the commit the patch was made against, then applies `vendor/mibe.patch`
-3. Installs Python dependencies and runs the tests
-4. Connects to the speaker over wireless ADB, confirms it's an LX04, remembers its address, and checks that Via is installed
-5. Installs two login LaunchAgents, waits for the status service to come up, and opens the status page on the speaker
+- **Status Display**: `http://127.0.0.1:8477/` (opened on the speaker via `adb-bridge` forwarding)
+- **Mac Settings Page**: `http://127.0.0.1:8477/setting` (accessible on the Mac only)
 
-It's safe to run again. If you don't know the speaker's IP, leave out `--device` and the background bridge scans the current subnet on its own. To just try it on the Mac first, add `--no-agent` and then run `./scripts/start.sh` yourself. `./scripts/setup.sh --help` lists every option.
-
-Afterwards, open `http://127.0.0.1:8477/` in a browser on the Mac to check the page renders. Via on the speaker opens the fixed address `http://127.0.0.1:8477/` — that `127.0.0.1` is the speaker itself, and a proxy forwards it to the Mac, so you never have to update the speaker when the Mac's DHCP address changes. When the connection drops, only the proxy is repaired; the page retries on its own, without reloading or opening new tabs.
-
-By default the proxy uses the Mac's Wi-Fi IPv4. If your Wi-Fi isn't `en0`, set `mac_ip` as described in the [usage guide](docs/使用说明.md#指定-mac-的局域网地址可选) (Chinese).
-
-### Manual install
-
-If you'd rather go step by step, `setup.sh` is equivalent to:
-
-```bash
-git clone https://github.com/yihong0618/mibe.git vendor/mibe
-cd vendor/mibe && git checkout 2c73600 && git apply ../mibe.patch && uv sync && cd ../..
-./scripts/start.sh            # run in the foreground; check the page in a browser on the Mac first
-./scripts/install-agent.sh    # install the login agents and open the page on the speaker
-```
-
-The patch adapts mibe for status events, running without a speaker login, announcement control, and low-overhead polling. Details are under "我们改了 mibe 什么" in [docs/使用说明.md](docs/使用说明.md) (Chinese).
-
----
-
-## Keeping it running
-
-`setup.sh` already installs the login agents (reinstall them alone with `./scripts/install-agent.sh`). From then on it starts when you log in to macOS, restarts if a process dies, and survives reboots.
+Common commands:
 
 | Task | Command |
 | --- | --- |
-| Status service log | `tail -f ~/Library/Logs/lx04-status.log` |
-| ADB bridge log | `tail -f ~/Library/Logs/lx04-adb-bridge.log` |
-| Restart after changing the status code | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-status` |
-| Restart the ADB bridge | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-adb-bridge` |
-
-The installer creates two LaunchAgents, one for the status service and one for the ADB bridge. To uninstall, unload both `com.gerry.lx04-status` and `com.gerry.lx04-adb-bridge`.
-
----
-
-## Reading the states
-
-| Shown | Meaning |
-| --- | --- |
-| **Running** | Working |
-| **Your turn** | Stopped and waiting for you — asking a question or requesting approval. **This one pulses orange; it's the one to watch** |
-| Done | Finished. Green tint for the first 10 minutes |
-| Stopped | Interrupted by you, or no activity for more than 15 minutes |
-
-Quota numbers are normally white, turn orange when running low, and red when nearly gone. **It stays quiet until it matters, so you'll notice when it doesn't.**
-
-When the Mac can't be reached, the whole screen turns grey and the clock's colon stops blinking — so you can tell "no tasks" from "disconnected" at a glance.
+| Run in foreground | `./scripts/start.sh` |
+| Reinstall login LaunchAgents | `./scripts/install-agent.sh` |
+| Restart status service | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-status` |
+| Restart ADB bridge | `launchctl kickstart -k gui/$(id -u)/com.gerry.lx04-adb-bridge` |
+| Tail logs | `tail -f ~/Library/Logs/lx04-status.log ~/Library/Logs/lx04-adb-bridge.log` |
 
 ---
 
-## Using your own background
-
-By default it uses `meili-lite.mp4` (snow mountain) and `canyon-lite.mp4` (canyon) in `display/`: 800×480, 12fps, H.264 Baseline, no B-frames, at the original playback speed to keep decoding cheap. The original `meili.mp4` and `canyon.mp4` are kept for rollback.
-
-If you swap in your own footage, mind these — each one was learned the hard way:
-
-**Make it exactly 800×480** to match the screen. Don't count on `object-fit` to rescue you.
-
-**Bake the color grade into the video file; don't use CSS filters.** An extra color matrix on every frame is more than this GPU can handle.
-
-**Encode as H.264 Baseline, pixel format `yuv420p`, ideally 12fps with no B-frames.** With a video background, keep decoding cost down first.
-
-**The loop must start and end on the same frame**, or it jumps once per cycle. Two ways: play forward then backward (ping-pong), or move the first few frames to the end and dissolve them back in.
-
-A ready-to-use command (adjust `crop` for framing):
-
-```bash
-ffmpeg -i your-footage.mov \
-  -filter_complex "[0:v]fps=12,crop=3600:2160:120:0,scale=800:480,format=yuv420p[v];\
-[v]split[a][b];[b]reverse,trim=start_frame=1,setpts=PTS-STARTPTS[r];[a][r]concat=n=2:v=1[out]" \
-  -map "[out]" -an -c:v libx264 -profile:v baseline -level:v 3.0 -pix_fmt yuv420p \
-  -crf 21 -g 24 -movflags +faststart -y display/your-background.mp4
-```
-
-Then update `SRC` in `display/index.html`.
-
-**If the video can't play, it falls back to a still image** (`display/*.jpg`), so the screen never goes black.
-
----
-
-## How it works
+## Architecture Overview
 
 ```
 ~/.codex/sessions/*.jsonl ──→ mibe event tailing ──┐
 ~/.claude/projects/*.jsonl ─→ claude.py polling ───┤→ AGENTS dict → snapshot()
-          (every 2s)                               │        ↓
- system.py (CPU/mem/GPU/network) ──────────────────┤   HTTP :8477
- photos.py (photos, re-drawn every 10 min) ────────┘  access.py checks the caller
+ system.py (CPU/mem/GPU/network) ──────────────────┤        ↓
+ photos.py (photos, re-drawn every 10 min) ────────┤   HTTP :8477
+ settings.py (page order/controls/sleep config) ───┘  access.py caller check (/setting is Mac-only)
                                                           ↓
                   adb reverse (USB) or toybox nc proxy (wireless ADB, over Wi-Fi)
                                                           ↓
-        Via browser opens http://127.0.0.1:8477/ (speaker loopback, polls every 2s)
-
- scripts/adb-bridge.py ←──── ADB (Wi-Fi or USB) ────→ speaker: find device, keep the tunnel, sleep/wake, open the page
+        Via browser opens http://127.0.0.1:8477/ (polls every 2s and syncs state + settings)
 ```
-
-- **Codex**: mibe follows the event stream in `~/.codex/sessions/`
-- **Claude**: `bridge/claude.py` reads the `.jsonl` files in `~/.claude/projects/` directly; quota comes from the claude-hud statusline plugin's cache, falling back to Claude Desktop's local cache
-- **Mac Status / Photos**: `bridge/system.py` reads CPU, memory, GPU, and network throughput; `bridge/photos.py` opens the Photos library read-only
-- **Who can connect**: the service listens on the LAN but only lets in the Mac itself, the registered speaker, and addresses in `LX04_CONTROL_ALLOW`; every other device on the LAN gets 403 (the Photos page shows family photos). The speaker is recognized by its hardware serial number, so other LAN devices can't pose as it; after replacing the speaker, re-run `./scripts/setup.sh --device <new-ip>`. To view it on your phone, put the phone's IP in the `LX04_CONTROL_ALLOW` environment variable (comma-separated), e.g. in the foreground `LX04_CONTROL_ALLOW=192.168.x.x ./scripts/start.sh` (stop the login agent first, or the port will conflict)
-- **Page**: a single HTML file, no framework, no build step. The speaker's WebView is **Chromium 61** (2017), so `inset`, flex `gap`, `backdrop-filter`, and variable fonts are all unsupported
-
-No database, no accounts — a restart just reads everything again.
 
 ---
 
 ## License
 
-MIT, see [LICENSE](LICENSE).
-
-Background videos and images are not covered by this license; copyright belongs to their respective authors.
+MIT, see [LICENSE](LICENSE). Background videos and images belong to their respective authors.

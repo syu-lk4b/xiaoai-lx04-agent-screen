@@ -26,6 +26,7 @@ import access  # noqa: E402  bridge/access.py，谁能访问
 import mac  # noqa: E402  bridge/mac.py，Mac 控制页的动作
 import system  # noqa: E402  bridge/system.py，Mac 状态页的数据
 import photos  # noqa: E402  bridge/photos.py，相册页的人物照片
+import settings  # noqa: E402  bridge/settings.py，页面编排与轮播配置
 
 DISPLAY = ROOT / "display"
 # 页面要的静态资源就这几类，多的不开
@@ -391,6 +392,7 @@ def snapshot():
         "mac": mac.state(),
         # 锁外采集：它自带缓存和锁，最慢一次几十毫秒，不该拖住 AGENTS 那把锁
         "system": system.read(),
+        "settings": settings.read(),
     }
 
 
@@ -454,9 +456,10 @@ class Handler(BaseHTTPRequestHandler):
     # 行为是未定义的——实测会把某个分片当成整个文件存住，之后每次都报
     # MEDIA_ERR_SRC_NOT_SUPPORTED，看起来像视频文件坏了，其实文件好好的。
     protocol_version = "HTTP/1.1"
-    def _permitted(self, write=False):
+    def _permitted(self, write=False, mac_only=False):
         """所有请求的门卫。不通过就 403，并且不区分原因，免得帮人探测。"""
-        ok = access.allowed(
+        check = access.mac_only if mac_only else access.allowed
+        ok = check(
             self.client_address[0], self.headers.get("Host"),
             self.connection.getsockname()[0],
         )
@@ -467,9 +470,44 @@ class Handler(BaseHTTPRequestHandler):
         return ok
 
     def do_GET(self):
+        path = urlparse(self.path).path
+        if path in ("/setting", "/settings", "/setting.html"):
+            if not self._permitted(mac_only=True):
+                return
+            try:
+                body = (DISPLAY / "setting.html").read_bytes()
+            except FileNotFoundError:
+                self.send_error(404)
+                return
+            self._send(body, "text/html; charset=utf-8")
+            return
+        if path == "/api/settings":
+            if not self._permitted(mac_only=True):
+                return
+            body = json.dumps(settings.read(), ensure_ascii=False).encode()
+            self._send(body, "application/json; charset=utf-8")
+            return
+        if path == "/api/mac/apps":
+            if not self._permitted(mac_only=True):
+                return
+            body = json.dumps(
+                {"apps": mac.list_installed_apps(), "builtins": settings.BUILTIN_MAC_ACTIONS},
+                ensure_ascii=False,
+            ).encode()
+            self._send(body, "application/json; charset=utf-8")
+            return
+        if path == "/api/mac/app-icon":
+            if not self._permitted(mac_only=True):
+                return
+            app_path = parse_qs(urlparse(self.path).query).get("path", [""])[0]
+            body = mac.icon_for_path(app_path)
+            if body is None:
+                self.send_error(404)
+            else:
+                self._send(body, "image/png", cache="max-age=86400")
+            return
         if not self._permitted():
             return
-        path = urlparse(self.path).path
         if path.startswith("/icons/") and path.endswith(".png"):
             body = mac.icon(path[len("/icons/"):-len(".png")])
             if body is None:
@@ -485,12 +523,16 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(body, "image/jpeg", cache="max-age=86400")
         elif path == "/api/photos":
             # 单独一个接口，不进 /api/status：列表十分钟才变，没必要两秒一传
-            body = json.dumps(photos.read(), ensure_ascii=False).encode()
+            cfg = settings.read()
+            body = json.dumps(
+                photos.read(years=cfg["photo_years"], count=cfg["photo_count"]),
+                ensure_ascii=False,
+            ).encode()
             self._send(body, "application/json; charset=utf-8")
         elif self.path.startswith("/api/status"):
             body = json.dumps(snapshot(), ensure_ascii=False).encode()
             self._send(body, "application/json; charset=utf-8")
-        elif urlparse(self.path).path in ("/", "/index.html"):
+        elif path in ("/", "/index.html"):
             try:
                 body = (DISPLAY / "index.html").read_bytes()
             except FileNotFoundError:
@@ -498,7 +540,7 @@ class Handler(BaseHTTPRequestHandler):
                 return
             self._send(_stamp(body), "text/html; charset=utf-8")
         else:
-            self._send_file(unquote(urlparse(self.path).path).lstrip("/"))
+            self._send_file(unquote(path).lstrip("/"))
 
     def _send_file(self, name):
         """display/ 下的静态资源。只放行白名单后缀，且不许 ../ 爬出目录。"""
@@ -555,9 +597,38 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(chunk)
 
     def do_POST(self):
+        url = urlparse(self.path)
+        if url.path in ("/api/settings", "/api/focus"):
+            if not self._permitted(write=True, mac_only=True):
+                return
+            if url.path == "/api/focus":
+                page = parse_qs(url.query).get("page", [""])[0]
+                cfg = settings.focus(page)
+                if cfg is None:
+                    self.send_error(400, "invalid page")
+                    return
+                body = json.dumps(cfg, ensure_ascii=False).encode()
+                self._send(body, "application/json; charset=utf-8")
+                return
+            if parse_qs(url.query).get("reset") == ["1"]:
+                cfg = settings.save(settings.defaults())
+                body = json.dumps(cfg, ensure_ascii=False).encode()
+                self._send(body, "application/json; charset=utf-8")
+                return
+            try:
+                length = int(self.headers.get("Content-Length") or "0")
+                if length <= 0 or length > 65536:
+                    raise ValueError("invalid content length")
+                payload = json.loads(self.rfile.read(length).decode("utf-8"))
+                cfg = settings.save(payload)
+            except (ValueError, json.JSONDecodeError):
+                self.send_error(400, "invalid settings payload")
+                return
+            body = json.dumps(cfg, ensure_ascii=False).encode()
+            self._send(body, "application/json; charset=utf-8")
+            return
         if not self._permitted(write=True):
             return
-        url = urlparse(self.path)
         if url.path == "/api/action":
             self._action(parse_qs(url.query).get("name", [""])[0])
             return
@@ -629,6 +700,7 @@ def main():
 
     ip = _lan_ip()
     print(f"[status] 状态屏  http://{ip}:{PORT}/")
+    print(f"[status] 设置页  http://127.0.0.1:{PORT}/setting")
     print(f"[status] 接口    http://{ip}:{PORT}/api/status")
 
     async def runner():

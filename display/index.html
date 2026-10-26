@@ -141,11 +141,7 @@
   body.offline .cl { -webkit-animation:none; animation:none; }
   body.offline .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
   /* 看不见的那一页不必动 —— 省一半合成，且暂停保相位，滑回来不跳 */
-  .deck:not(.p1) .page.b .photo,
-  .deck.p1       .page.a .photo,
-  .deck.p2       .page.a .photo,
-  .deck.p3       .page.a .photo,
-  .deck.p4       .page.a .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
+  .page:not(.active) .photo { -webkit-animation-play-state:paused; animation-play-state:paused; }
 
   .head .when .v { margin-top:1px; font-size:30px; font-weight:500; letter-spacing:-.012em;
                    font-variant-numeric:tabular-nums; }
@@ -328,34 +324,56 @@
               font-variant-numeric:tabular-nums; }
 
   /* 启动台式排布：图标在上、名字在下，图标是 Mac 本机应用的 .icns 现转的 */
-  /* 4×3：三行 92px 落在 116–392，底部留给提示和翻页点，三者互不压 */
-  .ctl { margin-top:8px; }
+  .ctl { margin-top:4px; }
   .ctl .row { display:flex; }
   /* flex gap 要 Chrome 84，用 margin 代替 */
   .ctl .app {
-    flex:1 1 0; height:92px; margin-right:12px; border-radius:18px; border:0;
+    flex:1 1 0; height:84px; margin-right:12px; border-radius:16px; border:0;
     background:transparent; color:#fff; font:inherit; text-align:center;
-    padding:6px 0 0; -webkit-tap-highlight-color:transparent; outline:none;
+    padding:4px 0 0; -webkit-tap-highlight-color:transparent; outline:none;
   }
   .ctl .app:last-child { margin-right:0; }
-  .ctl .ico { position:relative; display:block; width:60px; height:60px; margin:0 auto; }
+  .ctl .ico { position:relative; display:block; width:54px; height:54px; margin:0 auto; }
   /* 按下只动 transform：老 GPU 上这是唯一不触发重绘的反馈 */
   .ctl .ico img {
-    display:block; width:60px; height:60px;
+    display:block; width:54px; height:54px;
     -webkit-transition:-webkit-transform .12s ease-out; transition:transform .12s ease-out;
   }
   .ctl .app:active .ico img, .ctl .app.hit .ico img {
     -webkit-transform:scale(.88); transform:scale(.88);
   }
-  .ctl .nm { display:block; margin-top:4px; font-size:16px; font-weight:500; line-height:1.2; }
+  .ctl .nm {
+    display:block; margin-top:3px; font-size:15px; font-weight:500; line-height:1.2;
+    overflow:hidden; white-space:nowrap; text-overflow:ellipsis; padding:0 4px;
+  }
   /* 开着的开关：图标右上角一个绿点，和任务卡片的「完成」同色；格子太小，不再放状态字 */
   .ctl .app.on .ico::after {
-    content:''; position:absolute; top:-4px; right:-4px; width:16px; height:16px;
+    content:''; position:absolute; top:-4px; right:-4px; width:15px; height:15px;
     border-radius:50%; background:#22C55E; border:3px solid #0d1219;
   }
   .ctl .app.bad .nm { color:#FF6B6B; }
-  .ctl-msg { position:absolute; left:0; right:0; bottom:34px; text-align:center;
-             font-size:15px; color:rgba(255,255,255,.55); }
+  /* 底部音量与静音控制条 */
+  .vol-bar {
+    position:absolute; left:48px; right:48px; bottom:32px; height:40px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .vol-btn {
+    flex:1 1 0; max-width:156px; height:38px; margin-right:14px; border-radius:999px;
+    border:1px solid rgba(255,255,255,.11); background:rgba(13,18,27,.72);
+    color:rgba(255,255,255,.9); font:inherit; font-size:15px; font-weight:500;
+    display:flex; align-items:center; justify-content:center;
+    -webkit-tap-highlight-color:transparent; outline:none;
+  }
+  .vol-btn:last-child { margin-right:0; }
+  .vol-btn svg { width:18px; height:18px; margin-right:6px; fill:currentColor; flex:none; }
+  .vol-btn:active, .vol-btn.hit {
+    -webkit-transform:scale(.95); transform:scale(.95);
+    background:rgba(255,255,255,.18);
+  }
+  .vol-btn.on { background:rgba(239,68,68,.24); border-color:rgba(239,68,68,.45); color:#FCA5A5; }
+  .vol-btn.bad { color:#FF6B6B; border-color:rgba(255,107,107,.45); }
+  .ctl-msg { position:absolute; top:56px; left:220px; right:220px; text-align:center;
+             font-size:15px; color:rgba(255,255,255,.78); pointer-events:none; }
 
   /* ── 相册页 ──
      过去两年有人物的照片随机轮播（bridge/photos.py）。图在 Mac 上已裁成屏幕尺寸：
@@ -386,7 +404,7 @@
 <body>
   <div class="stage">
   <div class="deck" id="deck">
-    <div class="page a" data-k="codex">
+    <div class="page a active" data-k="codex">
     <div class="card">
       <video class="vid" muted loop playsinline webkit-playsinline preload="auto"></video>
       <div class="photo s-ridge"></div>
@@ -531,6 +549,11 @@
             <button class="app" data-a="eastmoney"><span class="ico"><img src="icons/eastmoney.png" alt=""></span><span class="nm">东方财富</span></button>
           </div>
         </div>
+        <div class="vol-bar" id="volBar">
+          <button class="vol-btn" data-a="volume_down"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm11 2v2h6v-2h-6z"/></svg><span class="nm">音量 -</span></button>
+          <button class="vol-btn" data-a="volume_mute" id="volMute"><svg viewBox="0 0 24 24"><path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27 7.73 9H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73l-9-9L4.27 3zM12 4L9.91 6.09 12 8.18V4z"/></svg><span class="nm">静音</span></button>
+          <button class="vol-btn" data-a="volume_up"><svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/></svg><span class="nm">音量 +</span></button>
+        </div>
         <div class="ctl-msg" id="ctlMsg"></div>
       </div>
     </div>
@@ -613,7 +636,7 @@ function subline(t) {
   }
 }
 
-const esc = s => String(s).replace(/[&<>]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;' }[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 
 const FRESH = 600;
 
@@ -687,29 +710,69 @@ const PAGES = {
   claude: { el: document.querySelector('.page.b'), key: null, used: true },
 };
 const deck = $('deck'), dotEls = $('dots').children;
-// 页序。状态页、控制页、相册页不在 PAGES 里：它们没有 agent 数据、背景和视频，只借用抬头的时钟
-const ORDER = ['codex', 'claude', 'sys', 'mac', 'photo'];
+// 页序与各页 DOM。状态页、控制页、相册页不在 PAGES 里：它们没有 agent 数据、背景和视频，只借用抬头的时钟
+let ORDER = ['codex', 'claude', 'sys', 'mac', 'photo'];
 const MAC = { el: document.querySelector('.page.c') };
 const SYS = { el: document.querySelector('.page.s') };
 const PHOTO = { el: document.querySelector('.page.f') };
 const EXTRA = [SYS, MAC, PHOTO];
+const ALL_PAGES = {
+  codex: PAGES.codex.el,
+  claude: PAGES.claude.el,
+  sys: SYS.el,
+  mac: MAC.el,
+  photo: PHOTO.el,
+};
 
-// ── 显示哪一页 ──
+// ── 显示哪一页（支持 /setting 动态编排，URL 查询参数仍可覆盖） ──
 let view = 'codex', pin = null, pinAt = 0;
-const PIN_MS = 60000;   // 手动滑动后钉住多久，之后交还自动轮播
-// 每页停多久：?rotate=N 改其他页（秒），?photo=N 改相册页，?rotate=0 关掉轮播。
-// 相册页停得久：照片是拿来慢慢看的，一分钟只够翻五张
-function secs(name, dflt) {
+let PIN_MS = 60000;   // 手动滑动后钉住多久，之后交还自动轮播
+function querySecs(name) {
   const m = location.search.match(new RegExp('[?&]' + name + '=(\\d+)'));
-  return (m ? +m[1] : dflt) * 1000;
+  return m ? +m[1] * 1000 : null;
 }
-const ROTATE_MS = secs('rotate', 60);
-const PHOTO_MS = secs('photo', 300);
-function dwell(k) { return k === 'photo' ? PHOTO_MS : ROTATE_MS; }
+const Q_ROTATE = querySecs('rotate');
+const Q_PHOTO = querySecs('photo');
+const Q_IDLE = querySecs('idle');
+
+let rotateOn = Q_ROTATE !== 0;
+let followUrgent = true, followWorking = true;
+let DWELL = { codex: 60000, claude: 60000, sys: 60000, mac: 60000, photo: 300000 };
+function dwell(k) {
+  if (k === 'photo' && Q_PHOTO !== null) return Q_PHOTO;
+  if (k !== 'photo' && Q_ROTATE !== null) return Q_ROTATE;
+  return DWELL[k] || 60000;
+}
 // 两边都没任务在跑超过这么久，就当相框停在相册页；有任务跑起来再回去轮播。?idle=0 关掉
-const IDLE_MS = secs('idle', 600);
+let IDLE_MS = Q_IDLE !== null ? Q_IDLE : 600000;
+let SLIDE_MS = 12000;
 let busyAt = Date.now(), idle = false;
 let rotateAt = Date.now();
+let focusSeq = null, photoCfgKey = null, macItemsKey = null;
+let lastMacState = null;
+
+function renderMacItems(items) {
+  if (!Array.isArray(items)) return;
+  const key = items.map(function (it) { return it.id + '|' + it.name + '|' + (it.path || ''); }).join('~');
+  if (key === macItemsKey) return;
+  macItemsKey = key;
+  const rows = [];
+  for (let r = 0; r < items.length; r += 4) {
+    const chunk = items.slice(r, r + 4);
+    let cells = chunk.map(function (it) {
+      const awakeId = it.id === 'awake' ? ' id="awake"' : '';
+      return '<button class="app" data-a="' + esc(it.id) + '"' + awakeId + '>' +
+        '<span class="ico"><img src="icons/' + encodeURIComponent(it.id) + '.png" alt=""></span>' +
+        '<span class="nm">' + esc(it.name) + '</span></button>';
+    }).join('');
+    for (let padIdx = chunk.length; padIdx < 4; padIdx++) {
+      cells += '<div class="app" style="visibility:hidden"></div>';
+    }
+    rows.push('<div class="row">' + cells + '</div>');
+  }
+  $('ctl').innerHTML = rows.join('');
+  if (lastMacState) renderMac(lastMacState);
+}
 
 function syncVideos() {
   const root = document.documentElement;
@@ -737,13 +800,16 @@ function syncVideos() {
   }
 }
 
-function show(k) {
+function show(k, force) {
   const idx = ORDER.indexOf(k);
-  if (k === view || idx < 0) return;
+  if (idx < 0 || (k === view && !force)) return;
   view = k;
   // 分页状态挂 deck 不挂 body：render() 每次都会清掉 body.className
-  for (let i = 1; i < ORDER.length; i++) {
+  for (let i = 1; i < 5; i++) {
     deck.classList.toggle('p' + i, idx === i);   // 用 toggle，别整体赋值——会冲掉 dragging
+  }
+  for (const id in ALL_PAGES) {
+    ALL_PAGES[id].classList.toggle('active', id === k);
   }
   syncVideos();
   for (let i = 0; i < dotEls.length; i++) dotEls[i].className = i === idx ? 'on' : '';
@@ -751,9 +817,71 @@ function show(k) {
 
 function pinTo(k) { pin = k; pinAt = Date.now(); show(k); }   // 手动：临时钉住
 
+function applySettings(s) {
+  if (!s) return;
+  if (s.pin_seconds) PIN_MS = s.pin_seconds * 1000;
+  if (s.slide_seconds) SLIDE_MS = s.slide_seconds * 1000;
+  if (Q_ROTATE === null) rotateOn = s.rotate !== false;
+  followUrgent = s.follow_urgent !== false;
+  followWorking = s.follow_working !== false;
+  if (Q_IDLE === null) {
+    IDLE_MS = s.idle_photo === false ? 0 : (s.idle_seconds || 600) * 1000;
+  }
+  if (!IDLE_MS && idle) idle = false;
+
+  if (Array.isArray(s.pages)) {
+    const nextOrder = [];
+    s.pages.forEach(function (p) {
+      if (!p || !ALL_PAGES[p.id]) return;
+      if (p.dwell) DWELL[p.id] = p.dwell * 1000;
+      if (p.enabled) nextOrder.push(p.id);
+    });
+    if (!nextOrder.length) nextOrder.push('codex');
+    if (nextOrder.join(',') !== ORDER.join(',')) {
+      ORDER = nextOrder;
+      for (const id in ALL_PAGES) {
+        const idx = ORDER.indexOf(id);
+        if (idx < 0) {
+          ALL_PAGES[id].style.display = 'none';
+          ALL_PAGES[id].classList.remove('active');
+        } else {
+          ALL_PAGES[id].style.display = '';
+          ALL_PAGES[id].style.left = (idx * 800) + 'px';
+        }
+      }
+      deck.style.width = (ORDER.length * 800) + 'px';
+      $('dots').innerHTML = ORDER.map(function () { return '<i></i>'; }).join('');
+      $('dots').hidden = ORDER.length <= 1;
+      const target = ORDER.indexOf(view) >= 0 ? view : ORDER[0];
+      show(target, true);
+      rotateAt = Date.now();
+    }
+  }
+
+  if (s.focus && typeof s.focus.seq === 'number') {
+    if (focusSeq === null) {
+      focusSeq = s.focus.seq;
+    } else if (s.focus.seq !== focusSeq) {
+      focusSeq = s.focus.seq;
+      if (s.focus.page && ORDER.indexOf(s.focus.page) >= 0) {
+        idle = false;
+        pinTo(s.focus.page);
+      }
+    }
+  }
+
+  const pKey = (s.photo_years || 2) + ':' + (s.photo_count || 300);
+  if (photoCfgKey !== null && photoCfgKey !== pKey) loadAlbum();
+  photoCfgKey = pKey;
+
+  if (Array.isArray(s.mac_items)) renderMacItems(s.mac_items);
+  if ($('volBar')) $('volBar').hidden = s.mac_volume_bar === false;
+}
+
 // 哪个 agent 在等你（要授权 / 在问你）。轮播会把它错过，所以它优先
 function waiting(d) {
   for (const k in PAGES) {
+    if (ORDER.indexOf(k) < 0) continue;
     const a = (d.agents || {})[k];
     if (a && (a.tasks || []).some(t => t.state === 'NeedsApproval')) return k;
   }
@@ -763,6 +891,7 @@ function waiting(d) {
 // 哪个 agent 正在干活。Working 超过 15 分钟没动静后端会报成 Stopped，这里不用再判超时
 function running(d) {
   for (const k in PAGES) {
+    if (ORDER.indexOf(k) < 0) continue;
     const a = (d.agents || {})[k];
     if (a && (a.tasks || []).some(t => t.state === 'Working')) return k;
   }
@@ -776,7 +905,7 @@ function follow(d) {                                          // 自动：轮播
     pin = null;                                               // 钉住到期，交还自动
     rotateAt = now;                                           // 从当前页重新计时，别立刻跳走
   }
-  const urgent = waiting(d);
+  const urgent = followUrgent ? waiting(d) : null;
   if (urgent) {                                               // 停在等你的那页，直到你处理掉
     show(urgent);
     rotateAt = now;
@@ -785,22 +914,22 @@ function follow(d) {                                          // 自动：轮播
   const work = running(d);
   if (work) {
     busyAt = now;
-    if (idle) {                                               // 相框模式下来活了：直接去干活的那页
+    if (idle && followWorking) {                              // 相框模式下来活了：直接去干活的那页
       idle = false;
       show(work);
       rotateAt = now;
       return;
     }
-  } else if (IDLE_MS && album.slides.length && now - busyAt >= IDLE_MS) {
+  } else if (IDLE_MS && ORDER.indexOf('photo') >= 0 && album.slides.length && now - busyAt >= IDLE_MS) {
     idle = true;                                              // 闲着：停在相册，不轮播
     show('photo');
     rotateAt = now;
     return;
   }
-  if (ROTATE_MS && now - rotateAt >= dwell(view)) {
-    let next = ORDER[(ORDER.indexOf(view) + 1) % ORDER.length];   // 走到头绕回第一页
-    if (next === 'photo' && !album.slides.length) next = ORDER[0];  // 没照片就别停在空页上
-    show(next);
+  if (rotateOn && ORDER.length > 1 && now - rotateAt >= dwell(view)) {
+    let idx = (ORDER.indexOf(view) + 1) % ORDER.length;       // 走到头绕回第一页
+    if (ORDER[idx] === 'photo' && !album.slides.length) idx = (idx + 1) % ORDER.length;  // 没照片就别停在空页上
+    show(ORDER[idx]);
     rotateAt = now;
   }
 }
@@ -844,6 +973,7 @@ function render(d) {
   });
   renderMac(d.mac);
   renderSys(d.system);
+  applySettings(d.settings);
 
   follow(d);
   renderSpeak(d.speaking);
@@ -1086,8 +1216,16 @@ function renderSys(x) {
 
 // ── Mac 控制 ──
 function renderMac(m) {
+  lastMacState = m;
   const b = $('awake'), on = !!(m && m.awake);
-  b.classList.toggle('on', on);                  // 只动 on，别冲掉 hit/bad
+  if (b) b.classList.toggle('on', on);           // 只动 on，别冲掉 hit/bad
+  const vm = $('volMute');
+  if (vm) {
+    const muted = !!(m && m.muted);
+    vm.classList.toggle('on', muted);
+    const lb = vm.querySelector('.nm');
+    if (lb) lb.textContent = muted ? '已静音' : (m && m.volume != null ? '静音 · ' + m.volume + '%' : '静音');
+  }
 }
 
 let acting = false;
@@ -1127,11 +1265,16 @@ function act(btn) {
   xhr.send();
 }
 
-$('ctl').addEventListener('click', function (e) {
-  let t = e.target;
-  while (t && t !== this && !t.getAttribute('data-a')) t = t.parentNode;
-  if (t && t !== this) act(t);
-}, false);
+function bindAct(box) {
+  if (!box) return;
+  box.addEventListener('click', function (e) {
+    let t = e.target;
+    while (t && t !== this && !t.getAttribute('data-a')) t = t.parentNode;
+    if (t && t !== this) act(t);
+  }, false);
+}
+bindAct($('ctl'));
+bindAct($('volBar'));
 
 // ── 背景轮换 ──
 // 每页两层：底层恒不透明，只把上层从 0 淡到 1。两层同时半透明是错的——
@@ -1179,7 +1322,6 @@ setInterval(function () {
 
 // ── 相册 ──
 // 列表十分钟拉一次；只在相册页可见时换图，翻走了就停在原处，下次回来接着放
-const SLIDE_MS = 12000;
 const album = { moments: [], slides: [], i: -1, top: 0, busy: false, shownAt: 0 };
 
 // 竖图两两并排成一屏：相邻的两张竖图凑一对（服务端已把竖图排成挨着的），落单的居中

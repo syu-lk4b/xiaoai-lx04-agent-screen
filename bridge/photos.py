@@ -165,16 +165,20 @@ class Album:
         self._lock = threading.Lock()
         self._render_lock = threading.Lock()
         self._at = 0.0
+        self._params = None
         self._value = None
         self._index = {}
 
-    def read(self):
+    def read(self, years=None, count=None):
+        years = YEARS if years is None else years
+        count = COUNT if count is None else count
+        params = (years, count)
         with self._lock:
             now = time.monotonic()
-            if self._value is None or now - self._at >= REFRESH_SECONDS:
+            if self._value is None or self._params != params or now - self._at >= REFRESH_SECONDS:
                 db = LIBRARY / "database" / "Photos.sqlite"
                 try:
-                    value = query(db)
+                    value = query(db, years=years, count=count)
                 except sqlite3.Error as exc:
                     # 最常见的原因：后台服务没有读图库的权限（见 README「相册页」）
                     print(f"[photos] 读图库失败：{exc}", file=sys.stderr)
@@ -187,6 +191,7 @@ class Album:
                 self._index = {p["id"]: p for p in value["photos"]}
                 self._value = {**value, "photos": [
                     {k: v for k, v in p.items() if not k.startswith("_")} for p in value["photos"]]}
+                self._params = params
                 self._at = now
             return self._value
 
@@ -230,8 +235,8 @@ class Album:
 _album = Album()
 
 
-def read():
-    return _album.read()
+def read(years=None, count=None):
+    return _album.read(years=years, count=count)
 
 
 def image(uuid):
