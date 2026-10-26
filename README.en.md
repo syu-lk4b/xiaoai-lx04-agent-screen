@@ -35,7 +35,7 @@ Plus some supporting improvements:
 
 Swipe left and right between five pages: Codex, Claude, Mac Status, Mac Controls, and Photos. Left alone, it rotates on its own — the Photos page stays 5 minutes, every other page 1 minute (change with `?photo=N` / `?rotate=N`, in seconds). When a task is waiting for your approval, it stays on that page. Once neither Codex nor Claude has been busy for 10 minutes, it parks on the Photos page as a photo frame (`?idle=N` to change, `?idle=0` to turn off); as soon as a task starts running, it jumps back to that agent's page and resumes rotating.
 
-**The Photos page** reads the macOS Photos library directly: a random pick of photos with people in them from the past two years (using Photos' own face detection, skipping pets, strangers in the background and photos of ID documents), changing every 12 seconds, with portrait photos shown in pairs and crops centered on faces. No more copying photos onto the speaker. Read-only — the library is never modified; photos that live only in iCloud and aren't downloaded to this Mac are skipped. Tune with `LX04_PHOTO_YEARS` (default 2) and `LX04_PHOTO_COUNT` (default 300).
+**The Photos page** reads the macOS Photos library directly: a random pick of photos with people in them from the past two years (using Photos' own face detection, skipping pets, strangers in the background and photos of ID documents), changing every 12 seconds, with portrait photos shown in pairs and crops centered on faces. The speaker never pulls the originals: the Mac first crops each photo to screen size with `sips` (800×480 landscape, 400×480 portrait, face placed in the upper 40% of the frame), then sends it over the same HTTP tunnel as the status page, caching the result — the speaker's weak GPU just has to display what it gets, which is what keeps the slideshow smooth. No more copying photos onto the speaker. Read-only — the library is never modified; photos that live only in iCloud and aren't downloaded to this Mac are skipped. Tune with `LX04_PHOTO_YEARS` (default 2) and `LX04_PHOTO_COUNT` (default 300).
 
 **Screen off at night**: 23:00–07:00 by default; in the morning the screen wakes and returns to the status page. To change the window, add `"sleep": "23:30-07:00"` to `~/Library/Application Support/lx04-status/adb-endpoint.json`, or `"off"` to disable.
 
@@ -174,10 +174,17 @@ Then update `SRC` in `display/index.html`.
 ## How it works
 
 ```
-Codex session logs  ┐
-~/.codex/            ├→ bridge/run.py ─→ HTTP :8477 ─→ speaker browser
-Claude session logs ┘   (snapshot every 2s)          (polls every 2s)
-~/.claude/
+~/.codex/sessions/*.jsonl ──→ mibe event tailing ──┐
+~/.claude/projects/*.jsonl ─→ claude.py polling ───┤→ AGENTS dict → snapshot()
+          (every 2s)                               │        ↓
+ system.py (CPU/mem/GPU/network) ──────────────────┤   HTTP :8477
+ photos.py (photos, re-drawn every 10 min) ────────┘  access.py checks the caller
+                                                          ↓
+                  adb reverse (USB) or toybox nc proxy (wireless ADB, over Wi-Fi)
+                                                          ↓
+        Via browser opens http://127.0.0.1:8477/ (speaker loopback, polls every 2s)
+
+ scripts/adb-bridge.py ←──── ADB (Wi-Fi or USB) ────→ speaker: find device, keep the tunnel, sleep/wake, open the page
 ```
 
 - **Codex**: mibe follows the event stream in `~/.codex/sessions/`

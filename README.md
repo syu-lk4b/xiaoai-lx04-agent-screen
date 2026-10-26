@@ -35,7 +35,7 @@ Codex 和 Claude 正在干什么、额度还剩多少、哪个任务卡住了需
 
 左右滑动切换五页：Codex、Claude、Mac 状态、Mac 控制、相册。不碰它时自动轮播——相册页停 5 分钟，其他页各 1 分钟（`?photo=N` / `?rotate=N` 改，单位秒）；有任务在等你授权时停在那一页。Codex 和 Claude 都闲了 10 分钟以上，就停在相册页当相框（`?idle=N` 改，`?idle=0` 关）；一有任务跑起来，跳回那个 agent 的页继续轮播。
 
-**相册页**直接读 Mac 上「照片」App 的图库：从过去两年里随机抽有人物的照片（用「照片」App 自己的人脸识别，排除宠物、背景路人和证件翻拍），每 12 秒换一张，竖图两张并排，裁切时对准人脸。不用再往音箱里导照片。只读，不改图库；只在 iCloud 里、本机没下载的照片会跳过。年数和数量可用环境变量 `LX04_PHOTO_YEARS`（默认 2）、`LX04_PHOTO_COUNT`（默认 300）调整。
+**相册页**直接读 Mac 上「照片」App 的图库：从过去两年里随机抽有人物的照片（用「照片」App 自己的人脸识别，排除宠物、背景路人和证件翻拍），每 12 秒换一张，竖图两张并排，裁切时对准人脸。音箱不拉原图：Mac 先用 `sips` 把照片裁成屏幕尺寸（横图 800×480、竖图 400×480，人脸放在窗口上方 40%），经状态页同一条 HTTP 隧道传给音箱，裁好的图会缓存——音箱 GPU 弱，拿到手即用，轮播才不卡。不用再往音箱里导照片。只读，不改图库；只在 iCloud 里、本机没下载的照片会跳过。年数和数量可用环境变量 `LX04_PHOTO_YEARS`（默认 2）、`LX04_PHOTO_COUNT`（默认 300）调整。
 
 **夜里自动熄屏**：默认 23:00–07:00，早上自动亮屏并回到状态页。改时段在 `~/Library/Application Support/lx04-status/adb-endpoint.json` 里加 `"sleep": "23:30-07:00"`，`"off"` 关掉。
 
@@ -174,10 +174,17 @@ ffmpeg -i 你的素材.mov \
 ## 它是怎么工作的
 
 ```
-Codex 会话日志 ┐
-~/.codex/       ├→ bridge/run.py ─→ HTTP :8477 ─→ 音箱浏览器
-Claude 会话日志 ┘    （每 2 秒一次快照）         （每 2 秒拉一次）
-~/.claude/
+~/.codex/sessions/*.jsonl ──→ mibe 事件跟读 ──┐
+~/.claude/projects/*.jsonl ─→ claude.py 轮询 ─┤→ AGENTS 字典 → snapshot()
+        （每 2 秒）                            │        ↓
+ system.py（CPU/内存/GPU/网速）────────────────┤   HTTP :8477
+ photos.py（相册，每 10 分钟重抽）─────────────┘  access.py 校验来源
+                                                      ↓
+                     adb reverse（USB）或 toybox nc 代理（无线 ADB，走 WiFi）
+                                                      ↓
+             音箱 Via 浏览器打开 http://127.0.0.1:8477/（音箱本机 loopback，每 2 秒拉一次）
+
+ scripts/adb-bridge.py ←──── ADB（WiFi 或 USB）────→ 音箱：找设备、维持转发、开关屏、打开页面
 ```
 
 - **Codex 侧**：mibe 盯 `~/.codex/sessions/` 的事件流
