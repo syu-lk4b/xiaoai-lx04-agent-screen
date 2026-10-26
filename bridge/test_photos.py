@@ -11,7 +11,7 @@ from pathlib import Path
 import photos
 
 U = "AC6664E7-D9F2-43CA-89A7-DC39EACCB2%02d"
-P = "000E78F3-5D1F-4524-9628-EC2939E00A%02d"
+P = "11111111-2222-3333-4444-5555555555%02d"
 
 
 NOW = 900000000 + photos.EPOCH  # 测试里的「现在」：Core Data 时间 900000000
