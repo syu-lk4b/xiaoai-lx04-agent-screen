@@ -56,7 +56,7 @@
 
 - **夜间自动熄屏与晨间唤醒**：默认 `23:00–07:00` 自动发 `KEYCODE_SLEEP` 关屏，早上自动唤醒并重开状态页；同一晚若有人手动点亮屏幕不再抢关
 - **局域网访问控制与设备序列号钉死**：仅放行 Mac 本机、已登记序列号（`ro.serialno`）的音箱及 `LX04_CONTROL_ALLOW` 白名单 IP；所有写接口强制校验 `X-LX04-Action: 1` 防跨站请求与 DNS 重绑定
-- **Claude 额度读取修复**：优先读取 `claude-hud` 状态栏插件实时刷新的 `.usage-cache.json`，回退到 Claude Desktop 缓存
+- **Claude 额度读取修复**：优先读取 `claude-hud` 状态栏插件写出的 stdin `rate_limits` 快照（`usage-snapshot.json`，`setup.sh` 自动配置 `display.externalUsageWritePath`），回退到旧版 `.usage-cache.json` 与 Claude Desktop 缓存
 - **一键安装脚本**：`./scripts/setup.sh` 自动完成依赖检查、拉取 `mibe` 并打补丁、跑测试、无线 ADB 连音箱与注册开机自启 LaunchAgent
 
 ---

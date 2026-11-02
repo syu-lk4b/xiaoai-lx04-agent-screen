@@ -1,4 +1,4 @@
-"""额度解析的回归检查：Codex 混入的空窗口记录、claude-hud 缓存。
+"""额度解析的回归检查：Codex 混入的空窗口记录、claude-hud 快照与旧缓存。
 
 用 mibe 的 venv 跑（run.py 依赖 mibe）：
     vendor/mibe/.venv/bin/python -m unittest discover -s bridge -p 'test_*.py' -v
@@ -78,6 +78,45 @@ class HudUsageTests(unittest.TestCase):
         bad.close()
         self.addCleanup(Path(bad.name).unlink)
         self.assertIsNone(claude.read_hud_usage(Path(bad.name)))
+
+
+class HudSnapshotTests(unittest.TestCase):
+    """claude-hud 0.11+ 的 externalUsageWritePath 快照（旧的 .usage-cache.json 不再写了）。"""
+
+    def write(self, payload):
+        tmp = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+        tmp.write(payload if isinstance(payload, str) else json.dumps(payload))
+        tmp.close()
+        self.addCleanup(Path(tmp.name).unlink)
+        return Path(tmp.name)
+
+    SNAP = {
+        "updated_at": "2026-11-02T07:00:00.000Z",
+        "five_hour": {"used_percentage": 23, "resets_at": "2026-11-02T10:00:00.000Z"},
+        "seven_day": {"used_percentage": 41, "resets_at": "2026-11-04T12:00:00.000Z"},
+    }
+    STAMP = 1_793_602_800  # 2026-11-02T07:00:00Z
+
+    def test_fresh_snapshot(self):
+        u = claude.read_hud_snapshot(self.write(self.SNAP), now=self.STAMP + 60)
+        self.assertEqual(u["primary"], {"remaining": 77, "window_minutes": 300,
+                                        "resets_at": self.STAMP + 3 * 3600})
+        self.assertEqual(u["secondary"]["remaining"], 59)
+        self.assertEqual(u["secondary"]["window_minutes"], 10080)
+
+    def test_stale_snapshot(self):
+        self.assertIsNone(claude.read_hud_snapshot(self.write(self.SNAP), now=self.STAMP + 7 * 3600))
+
+    def test_one_window_missing(self):
+        snap = dict(self.SNAP, seven_day={"used_percentage": None, "resets_at": None})
+        u = claude.read_hud_snapshot(self.write(snap), now=self.STAMP)
+        self.assertEqual(u["primary"]["remaining"], 77)
+        self.assertIsNone(u["secondary"])
+
+    def test_bad_updated_at_or_corrupt(self):
+        self.assertIsNone(claude.read_hud_snapshot(self.write(dict(self.SNAP, updated_at="x")), now=self.STAMP))
+        self.assertIsNone(claude.read_hud_snapshot(self.write("{not json"), now=self.STAMP))
+        self.assertIsNone(claude.read_hud_snapshot(Path("/nonexistent/x.json")))
 
 
 if __name__ == "__main__":

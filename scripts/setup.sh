@@ -85,6 +85,29 @@ fi
 (cd "${MIBE}" && uv sync --quiet)
 ok "依赖已装到 vendor/mibe/.venv"
 
+step "Claude 额度来源 / Claude usage source"
+# claude-hud 0.11 起不再自己拉 /usage，只在配了 externalUsageWritePath 时把 stdin 的
+# rate_limits 写成快照——不配的话 Claude 页额度永远是「—」。只补缺，不覆盖用户已有的值。
+HUD_DIR="${HOME}/.claude/plugins/claude-hud"
+if [[ -d "${HUD_DIR}" ]]; then
+  /usr/bin/python3 - "${HUD_DIR}/config.json" "${HUD_DIR}/usage-snapshot.json" <<'PY' || warn "改 claude-hud 配置失败，Claude 额度会显示「—」"
+import json, sys
+from pathlib import Path
+cfg_path, want = Path(sys.argv[1]), sys.argv[2]
+cfg = json.loads(cfg_path.read_text(encoding="utf-8")) if cfg_path.exists() else {}
+display = cfg.setdefault("display", {})
+have = display.get("externalUsageWritePath")
+if have and have != want:
+    print(f"    ! claude-hud 已写到 {have}，启动服务时设 LX04_CLAUDE_USAGE={have}", file=sys.stderr)
+elif not have:
+    display["externalUsageWritePath"] = want
+    cfg_path.write_text(json.dumps(cfg, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+PY
+  ok "claude-hud 写额度快照到 ${HUD_DIR}/usage-snapshot.json"
+else
+  warn "没装 claude-hud 状态栏插件：Claude 额度只能靠 Claude Desktop 缓存，可能显示「—」"
+fi
+
 step "自检 / Self-test"
 (cd "${ROOT}" && "${MIBE}/.venv/bin/python" -m unittest discover -s bridge -p 'test_*.py' 2>&1 | tail -1) || die "bridge 测试没通过"
 (cd "${ROOT}" && /usr/bin/python3 -m unittest discover -s scripts -p 'test_adb_bridge.py' 2>&1 | tail -1) || die "adb-bridge 测试没通过"
