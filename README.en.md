@@ -56,7 +56,7 @@ Open **`http://127.0.0.1:8477/setting`** on your Mac to configure the speaker in
 
 - **Night Screen-Off & Morning Wake**: sends `KEYCODE_SLEEP` at night (default `23:00–07:00`) and wakes the screen back to the status page in the morning; sleeps at most once per boot so manual wake-ups at night are respected
 - **LAN Access Control & Hardware Serial Pinning**: only the Mac itself, the speaker pinned by hardware `ro.serialno`, and IPs in `LX04_CONTROL_ALLOW` can connect; all write endpoints require `X-LX04-Action: 1` and validate the `Host` header against DNS rebinding
-- **Fixed Claude Quota Reading**: reads live usage from the `claude-hud` statusline plugin cache (`.usage-cache.json`) first, falling back to Claude Desktop's local cache
+- **Fixed Claude Quota Reading**: reads the stdin `rate_limits` snapshot written by the `claude-hud` statusline plugin (`usage-snapshot.json`; `setup.sh` sets `display.externalUsageWritePath`) first, falling back to the legacy `.usage-cache.json` and Claude Desktop's local cache
 - **One-Command Setup**: `./scripts/setup.sh` checks dependencies, clones and patches `mibe`, runs unit tests, pairs with the speaker over wireless ADB, and installs login LaunchAgents
 
 ---

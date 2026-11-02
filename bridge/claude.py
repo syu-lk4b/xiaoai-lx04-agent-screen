@@ -18,7 +18,13 @@ from datetime import datetime
 from pathlib import Path
 
 PROJECTS = Path.home() / ".claude" / "projects"
-# claude-hud 状态栏插件在 Claude Code 运行时定期拉 /usage 并落盘，比 Desktop 缓存新得多
+# claude-hud 0.11+ 不再自己拉 /usage，只把 Claude Code 喂给状态栏的 stdin rate_limits
+# 写到 display.externalUsageWritePath（setup.sh 会配成这个路径）。会话在跑就持续刷新。
+HUD_SNAPSHOT = Path(os.environ.get(
+    "LX04_CLAUDE_USAGE",
+    Path.home() / ".claude" / "plugins" / "claude-hud" / "usage-snapshot.json",
+))
+# 旧版 claude-hud 后台轮询 OAuth 落的缓存；0.11 起不再写，留着兼容没升级的机器
 HUD_CACHE = Path.home() / ".claude" / "plugins" / "claude-hud" / ".usage-cache.json"
 CACHE = Path.home() / "Library" / "Application Support" / "Claude" / "Cache" / "Cache_Data"
 TAIL = 131072  # 只读尾部 128KB
@@ -270,14 +276,50 @@ def read_hud_usage(path=HUD_CACHE, now=None):
     return _fresh(out, stamp / 1000, now)
 
 
+def _iso(raw):
+    """JS 的 toISOString 带 Z，3.10 的 fromisoformat 不认，换成 +00:00。"""
+    return datetime.fromisoformat(str(raw).replace("Z", "+00:00")).timestamp()
+
+
+def read_hud_snapshot(path=HUD_SNAPSHOT, now=None):
+    """claude-hud 写的 stdin rate_limits 快照。读不到、两个窗口都空或陈旧都返回 None。"""
+    now = time.time() if now is None else now
+    try:
+        snap = json.loads(path.read_text(encoding="utf-8"))
+        stamp = _iso(snap["updated_at"])
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"[claude] 读取 claude-hud 额度快照失败：{exc}", file=sys.stderr)
+        return None
+
+    def window(key, minutes):
+        block = snap.get(key)
+        if not isinstance(block, dict) or not isinstance(block.get("used_percentage"), (int, float)):
+            return None
+        resets = None
+        if block.get("resets_at"):
+            try:
+                resets = _iso(block["resets_at"])
+            except ValueError:
+                pass
+        return {"remaining": round(100 - block["used_percentage"]),
+                "window_minutes": minutes, "resets_at": resets}
+
+    out = {"primary": window("five_hour", 300), "secondary": window("seven_day", 10080)}
+    if not (out["primary"] or out["secondary"]):
+        return None
+    return _fresh(out, stamp, now)
+
+
 def read_usage():
     """订阅额度。形状和 bridge/run.py 的 _usage() 一致，页面不用分支。
 
-    优先 claude-hud 落盘的缓存（Claude Code 在跑就会刷新）；
-    其次 Claude Desktop 的磁盘缓存，它没在跑就会陈旧——
-    宁可返回 None 让页面显示「—」，也不显示过期的数字。
+    优先 claude-hud 的 stdin 快照（Claude Code 在跑就会刷新），
+    其次旧版 claude-hud 的 OAuth 缓存，最后是 Claude Desktop 的磁盘缓存，
+    后两者没人刷新就会陈旧——宁可返回 None 让页面显示「—」，也不显示过期的数字。
     """
-    hud = read_hud_usage()
+    hud = read_hud_snapshot() or read_hud_usage()
     if hud:
         return hud
     now = time.time()
