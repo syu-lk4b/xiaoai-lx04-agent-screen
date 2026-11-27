@@ -462,9 +462,9 @@ class Handler(BaseHTTPRequestHandler):
     # ps/vm_stat 起不来，相册页和状态页一起变空。页面两秒一轮询，60 秒足够宽松。
     # 读写超时都由 handle_one_request 的 except TimeoutError 收掉并关连接，不出堆栈。
     timeout = 60
-    # sendall 的超时是「整次发送的总时长」，有进展也不重新计时。Chromium 61 对
-    # preload 的视频先读 ~2MB 就按播放进度慢慢读，4MB 的 mp4 一次 sendall 会挂二三十秒，
-    # 中间切页暂停一下就可能累计过 60 秒被截断。分块写，超时才是「60 秒没进展」。
+    # sendall 的超时是「整次发送的总时长」，有进展也不重新计时。浏览器按播放进度
+    # 慢慢读视频，背压让整段 mp4 的发送可能远超 60 秒，一次 sendall 发完就会中途
+    # 被截断。分块写：每个 64KB 块最多发 60 秒，整段响应可以超过 60 秒。
     WRITE_CHUNK = 64 * 1024
 
     def _write(self, body):

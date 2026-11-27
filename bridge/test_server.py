@@ -85,15 +85,17 @@ class IdleConnectionTests(_ServerCase):
         s = self._connect()
         # 必须是放行的 200 请求：403/404 走 send_error，会自带 Connection: close
         # 当场断开，测不到空闲超时
+        # 从发请求就开始计时：服务端最早也要在发完响应后再等满 timeout 才关，
+        # 所以下限是确定的，客户端读响应时被调度拖慢也不会误报
+        start = time.monotonic()
         s.sendall(b"GET / HTTP/1.1\r\n" + HOST + b"\r\n")
         s.settimeout(3)
         head, _ = _read_response(s)
         self.assertTrue(head.startswith(b"HTTP/1.1 200"), head[:40])
         self.assertNotIn(b"connection: close", head.lower())
-        start = time.monotonic()
         self.assertTrue(self._wait_eof(s, 3), "空闲的 keep-alive 连接没有被关闭")
         # 是超时关的，不是响应完立刻关的
-        self.assertGreaterEqual(time.monotonic() - start, TIMEOUT * 0.8)
+        self.assertGreaterEqual(time.monotonic() - start, TIMEOUT)
 
 
 class SlowReaderTests(_ServerCase):
@@ -123,14 +125,24 @@ class SlowReaderTests(_ServerCase):
             if not part:
                 break
             buf += part
-            head, sep, body = buf.partition(b"\r\n\r\n")
-            if sep and len(body) >= expected:
+            if len(buf.partition(b"\r\n\r\n")[2]) >= expected:
                 break
             time.sleep(0.03)  # 每次间隔远小于超时，总时长远大于超时
         elapsed = time.monotonic() - start
+        head, sep, body = buf.partition(b"\r\n\r\n")
+        self.assertTrue(sep, f"没收到完整响应头：{buf[:80]!r}")
         self.assertTrue(head.startswith(b"HTTP/1.1 206"), head[:40])
         self.assertGreater(elapsed, TIMEOUT * 1.5, "读得太快，测不到总时长超时")
         self.assertEqual(len(body), expected)
+
+
+class ConfigTests(unittest.TestCase):
+    def test_production_timeout_is_finite(self):
+        # 连接类用例都在 setUp 里把 timeout 补丁成 0.5，删掉线上的 timeout=60
+        # 它们照样过；这里不打补丁，单独钉住线上配置
+        timeout = run.Handler.__dict__.get("timeout")
+        self.assertIsInstance(timeout, (int, float))
+        self.assertGreater(timeout, 0)
 
 
 class HandleErrorTests(unittest.TestCase):
