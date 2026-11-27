@@ -22,7 +22,7 @@ cd vendor/mibe && git apply ../mibe.patch && uv sync && cd ../..
 
 # 测试（标准库 unittest）
 python3 -m unittest discover -s scripts -p test_adb_bridge.py -v
-vendor/mibe/.venv/bin/python -m unittest discover -s bridge -p 'test_*.py' -v  # 额度解析与 Mac 控制，run.py 依赖 mibe
+vendor/mibe/.venv/bin/python -m unittest discover -s bridge -p 'test_*.py' -v  # 额度解析、Mac 控制、HTTP 连接生命周期；run.py 依赖 mibe，test_server 要绑 loopback 端口（沙箱禁 bind 会报 PermissionError）
 python3 -m unittest scripts/test_adb_bridge.py -k test_three_confirmed_failures_rebuild_once  # 单个
 python3 scripts/adb-bridge.py --self-test   # 不连设备的自检
 
