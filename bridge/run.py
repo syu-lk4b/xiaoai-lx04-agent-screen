@@ -459,9 +459,18 @@ class Handler(BaseHTTPRequestHandler):
     # keep-alive 连接的空闲超时（秒）。音箱夜里熄屏/断网时 toybox nc 子进程死掉
     # 但 FIN 没送到 Mac，这边就剩一条永远 ESTABLISHED 的半开连接。不设超时，
     # 每条占一个 fd 和一个线程，十来天攒满 256 个 fd 上限，sqlite 打不开图库、
-    # ps/vm_stat 起不来，相册页和状态页一起变空。页面两秒一轮询，60 秒足够宽松；
-    # 视频下载被浏览器暂停超过 60 秒也会被断，Chromium 会用 Range 重新续上。
+    # ps/vm_stat 起不来，相册页和状态页一起变空。页面两秒一轮询，60 秒足够宽松。
+    # 读写超时都由 handle_one_request 的 except TimeoutError 收掉并关连接，不出堆栈。
     timeout = 60
+    # sendall 的超时是「整次发送的总时长」，有进展也不重新计时。Chromium 61 对
+    # preload 的视频先读 ~2MB 就按播放进度慢慢读，4MB 的 mp4 一次 sendall 会挂二三十秒，
+    # 中间切页暂停一下就可能累计过 60 秒被截断。分块写，超时才是「60 秒没进展」。
+    WRITE_CHUNK = 64 * 1024
+
+    def _write(self, body):
+        view = memoryview(body)
+        for i in range(0, len(view), self.WRITE_CHUNK):
+            self.wfile.write(view[i:i + self.WRITE_CHUNK])
 
     def _permitted(self, write=False, mac_only=False):
         """所有请求的门卫。不通过就 403，并且不区分原因，免得帮人探测。"""
@@ -621,7 +630,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", cache)
         self.send_header("Content-Length", str(len(chunk)))
         self.end_headers()
-        self.wfile.write(chunk)
+        self._write(chunk)
 
     def do_POST(self):
         url = urlparse(self.path)
@@ -689,16 +698,20 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header("ETag", etag)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
-        self.wfile.write(body)
+        self._write(body)
 
     def log_message(self, *args):
         pass
 
 
 class _Server(ThreadingHTTPServer):
+    # 浏览器中途放弃 Range 请求、音箱断网时 wfile.write 会抛这几种，是常态，
+    # 不往日志里刷堆栈。故意不用 ConnectionError 整个家族：它含
+    # ConnectionRefusedError，以后 handler 里有出站连接失败了不能静默吞掉。
+    PEER_GONE = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
     def handle_error(self, request, client_address):
-        # 空闲超时和对端断开是常态（见 Handler.timeout），不往日志里刷堆栈
-        if isinstance(sys.exc_info()[1], (TimeoutError, ConnectionError)):
+        if isinstance(sys.exc_info()[1], self.PEER_GONE):
             return
         super().handle_error(request, client_address)
 
