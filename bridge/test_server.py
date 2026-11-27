@@ -4,6 +4,7 @@
 
 前两组要绑 loopback 端口；在禁止 bind 的沙箱里会报 PermissionError，不是代码问题。
 """
+import math
 import socket
 import threading
 import time
@@ -143,6 +144,7 @@ class ConfigTests(unittest.TestCase):
         timeout = run.Handler.__dict__.get("timeout")
         self.assertIsInstance(timeout, (int, float))
         self.assertGreater(timeout, 0)
+        self.assertTrue(math.isfinite(timeout), timeout)  # inf 会让 settimeout 抛 OverflowError
 
 
 class HandleErrorTests(unittest.TestCase):
