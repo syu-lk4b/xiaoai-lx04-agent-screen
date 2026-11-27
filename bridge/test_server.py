@@ -39,12 +39,13 @@ class IdleConnectionTests(unittest.TestCase):
 
     def test_idle_keepalive_after_request_is_closed(self):
         with socket.create_connection(("127.0.0.1", self.port)) as s:
-            # 被 403 也无所谓（测试里 Host 校验照常生效），关键是走完一次请求后
-            # 连接仍是 keep-alive，空闲后要被收回
-            s.sendall(b"GET /api/status HTTP/1.1\r\nHost: evil.example\r\n\r\n")
+            # 必须是放行的 200 请求：403/404 走 send_error，会自带 Connection: close
+            # 当场断开，测不到空闲超时。Host 校验要求端口是 8477，与实际监听端口无关。
+            s.sendall(b"GET / HTTP/1.1\r\nHost: 127.0.0.1:8477\r\n\r\n")
             s.settimeout(3)
             head = s.recv(4096)
-            self.assertTrue(head.startswith(b"HTTP/1.1 "), head[:40])
+            self.assertTrue(head.startswith(b"HTTP/1.1 200"), head[:40])
+            self.assertNotIn(b"connection: close", head.lower())
             deadline = time.monotonic() + 3
             while time.monotonic() < deadline:
                 if self._closed_by_server(s, deadline - time.monotonic()):
