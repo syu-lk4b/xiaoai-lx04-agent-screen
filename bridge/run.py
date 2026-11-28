@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "vendor" / "mibe"))
 import mibe  # noqa: E402
 
 import claude  # noqa: E402  bridge/claude.py，Claude 侧的采集
+import codex_usage  # noqa: E402  bridge/codex_usage.py，Codex 额度兜底采集
 import access  # noqa: E402  bridge/access.py，谁能访问
 import mac  # noqa: E402  bridge/mac.py，Mac 控制页的动作
 import system  # noqa: E402  bridge/system.py，Mac 状态页的数据
@@ -59,6 +60,8 @@ def _new_agent(name):
         "tasks": {},        # project -> {state, summary, duration_ms, updated_at, total_ms, turn_start}
         "current": None,    # 最近有动静的项目，主状态取它
         "usage": None,      # 额度是账号级的，不跟项目走
+        "usage_at": 0.0,    # 当前 usage 的采集时间戳，用于判断新鲜度与跨源仲裁
+        "usage_source": None,
         "last_event": time.time(),
         "pending": {},      # project -> call_id，审批分项目，否则会被别的项目的输出清掉
     }
@@ -201,18 +204,21 @@ def _seed_codex(agent, limit=3):
         except OSError:
             continue
 
+        mtime = path.stat().st_mtime
         agent["tasks"][project] = {
             "state": state,
             "summary": None,
             "duration_ms": None,
-            "updated_at": path.stat().st_mtime,
+            "updated_at": mtime,
             "total_ms": total_ms,
             "turn_start": None,  # 历史会话没有正在跑的 turn
         }
         if agent["current"] is None:
             agent["current"] = project
-        if agent["usage"] is None and usage:
+        if agent["usage"] is None and usage and time.time() - mtime <= codex_usage.MAX_AGE:
             agent["usage"] = usage
+            agent["usage_at"] = mtime
+            agent["usage_source"] = "session"
 
 
 def observe(event, path, notifier):
@@ -277,7 +283,11 @@ def observe(event, path, notifier):
                 task["total_ms"] += payload.get("duration_ms") or 0
                 agent["pending"].pop(project, None)
             elif etype == "token_count":
-                agent["usage"] = _usage(payload.get("rate_limits")) or agent["usage"]
+                u = _usage(payload.get("rate_limits"))
+                if u:
+                    agent["usage"] = u
+                    agent["usage_at"] = agent["last_event"]
+                    agent["usage_source"] = "session"
 
         elif kind == "response_item":
             if etype == "function_call":
@@ -308,6 +318,22 @@ def _claude_tick():
             agent["last_event"] = max(t["updated_at"] for t in tasks.values())
 
 
+def _codex_usage_tick():
+    """在锁外刷新 Codex 额度（magpie quotas.json / wham 兜底），避免持锁做 I/O。"""
+    with _lock:
+        cur = AGENTS["codex"]
+        cur_usage, cur_at, cur_src = cur["usage"], cur["usage_at"], cur["usage_source"]
+    new_usage, new_at, new_src = codex_usage.read_usage(cur_usage, cur_at, cur_src)
+    with _lock:
+        cur = AGENTS["codex"]
+        # 若轮询期间 session 事件刚更新过更晚的额度，别拿旧结果覆盖
+        if cur["usage_at"] > cur_at:
+            return
+        cur["usage"] = new_usage
+        cur["usage_at"] = new_at
+        cur["usage_source"] = new_src
+
+
 def _claude_loop():
     """独立线程轮询。不塞进 mibe 的 asyncio 循环：这里全是阻塞 I/O，
     会卡住 Codex 事件跟读和播报。"""
@@ -316,6 +342,10 @@ def _claude_loop():
             _claude_tick()
         except Exception as exc:  # 采集出问题绝不能带走进程
             print(f"[claude] 采集失败：{exc}", file=sys.stderr)
+        try:
+            _codex_usage_tick()
+        except Exception as exc:
+            print(f"[codex] 额度采集失败：{exc}", file=sys.stderr)
         time.sleep(2)
 
 
@@ -738,6 +768,10 @@ def main():
 
     mibe.STATUS_OBSERVER = observe
     _seed_codex(AGENTS["codex"])
+    try:
+        _codex_usage_tick()  # 启动即补齐 magpie/wham 额度，首次 /api/status 就有数
+    except Exception as exc:
+        print(f"[codex] 首次额度采集失败：{exc}", file=sys.stderr)
     try:
         _claude_tick()  # 同步跑一次，第一次 /api/status 就有 Claude 数据
     except Exception as exc:
